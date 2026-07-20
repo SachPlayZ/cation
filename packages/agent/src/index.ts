@@ -16,7 +16,7 @@ import type {
 } from "groq-sdk/resources/chat/completions";
 import { z } from "zod";
 
-const MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const MODEL = "llama-3.3-70b-versatile";
 
 export const ProposedActionSchema = z.object({
   requestId: z.string().min(1),

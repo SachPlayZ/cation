@@ -222,18 +222,26 @@ raw version number. Fixed by preferring `Active` status, then `Paused`, only fal
 
 ---
 
-## 8. Demo script (3 min)
+## 8. Demo script (~3:30)
 
-1. 0:00 problem → Cation = explicit, private, revocable authority on Canton.
-2. CFO creates mandate: $500 auto / $2,000 daily / approved counterparties.
-3. "Pay $200 to Cloud Operations" → auto-executes, usage updates, real receipt.
-4. "$1,200 to Treasury Reserve" → approval inbox → approve → recheck → execute.
-5. "$100 to Unknown External Account" → agent refuses client-side (approved-list guard);
-   optionally show the on-ledger `COUNTERPARTY_NOT_ALLOWED` denial directly via a raw
-   request to demonstrate the ledger itself also refuses, not just a well-behaved model.
-6. Revoke → retry valid $200 → fails with `MANDATE_REVOKED`.
-7. Role switcher: 4 different ledger views (CFO/agent/compliance/recipient). Close:
-   "The AI proposes. The mandate decides."
+Two moments carry the whole pitch and must get real screen time, not a rushed
+cutaway: the **Loop Wallet signature** on mandate creation (proves this isn't
+a mocked login) and the **Canton Explorer link** in the toast (proves the
+transaction is real, independently verifiable, not our own claim).
+
+| Time | Beat | Do | Say |
+|---|---|---|---|
+| 0:00–0:20 | Problem | Landing page (`/`) | "AI agents are starting to move money. Today that means either handing them a wallet key, or trusting an off-chain policy server nobody can verify. Cation puts the authority itself on-ledger — a Daml contract on Canton decides, not the backend." |
+| 0:20–0:45 | Real identity, not a demo login | `/login` → click CFO → **Connect Wallet modal** → select Loop Wallet → approve in the actual Loop Wallet popup → show the real connected party ID | "The CFO doesn't get a password. They connect Loop Wallet — Canton's own self-custodial wallet — and prove control of a real external party." |
+| 0:45–1:15 | Mandate creation, cryptographically bound | Fill mandate form ($500 auto / $2,000 daily / Cloud Operations + Treasury Reserve) → Create → **let the "Awaiting Loop Wallet signature…" button state show** → approve the signature prompt in Loop Wallet | "Creating this mandate isn't just a database write. The exact terms — the limits, the counterparties — get signed by the CFO's wallet before the ledger will accept them. Sign different terms than what's shown, and the backend rejects it." |
+| 1:15–1:30 | Proof, not a claim | Toast appears → click **"View on Canton Explorer"** → real Lighthouse page loads with the real transaction | "This is 5N Lighthouse — Canton's public block explorer. Anyone can independently verify this transaction happened. We're not asking you to trust our UI." |
+| 1:30–1:55 | Auto-execute | Switch to Agent console → "Pay $200 to Cloud Operations for infrastructure" → executes instantly, receipt shown | "Under the auto-approve threshold, the agent's request just executes — evaluated entirely by the Daml contract." |
+| 1:55–2:20 | Escalation + human approval | "Transfer $1,200 to Treasury Reserve" → pending → switch to CFO dashboard → Approve → show it re-executes | "Above threshold, it doesn't execute — it waits for a human. And approval re-checks against the *current* mandate state, not a stale snapshot." |
+| 2:20–2:45 | The ledger refuses, not just a polite model | "Send $100 to Unknown External Account" → agent refuses client-side. Optionally also fire the raw API request directly to show the on-ledger `COUNTERPARTY_NOT_ALLOWED` violation | "The agent already knows its boundaries. But even if it didn't — even under a prompt injection — the contract itself would refuse. That's the point: authority lives on the ledger, not in the model's good behavior." |
+| 2:45–3:05 | Revoke | CFO revokes the mandate → agent retries the same valid $200 request → denied, `MANDATE_REVOKED` | "One click, and the agent's authority is gone — instantly, on-ledger, no redeploy." |
+| 3:05–3:30 | Privacy, closing | Role switcher → Compliance (violations only) → Recipient (its receipts only) → back to close line | "Every role sees only its own slice of the ledger — enforced by Canton's privacy model, not a filter in our UI. The AI proposes. The mandate decides." |
+
+**If short on time**, cut in this order: the raw-API on-ledger denial (2:20 beat's second half) → the compliance/recipient role tour (keep just one) → the landing page intro (start straight at login).
 
 ---
 
