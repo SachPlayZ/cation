@@ -83,23 +83,28 @@ function splitTemplateId(templateId: string): {
 
 /**
  * Create a contract via Seaport. Mirrors ledger.ts#createContract's contract:
- * callers re-query ACS afterward for the resulting contractId, so we only
- * need success/failure here.
+ * callers re-query ACS afterward for the resulting contractId, so success is
+ * all that's strictly required — but the response also carries a real
+ * `resultData.transaction.updateId`, which we surface for explorer links
+ * (see lib/explorer.ts). Confirmed present via direct empirical probe
+ * (2026-07-20); defensively optional in case the shape varies.
  */
 export async function seaportCreateContract(
   templateId: string,
   createArguments: Record<string, unknown>,
   party: string
-): Promise<void> {
+): Promise<{ updateId: string | null }> {
   const { packageId, moduleName, templateName } = splitTemplateId(templateId);
-  await seaportPost("/contracts/create", {
+  const json = (await seaportPost("/contracts/create", {
     arguments: createArguments,
     moduleName,
     packageId,
     party,
     templateName,
     validatorId: VALIDATOR_ID,
-  });
+  })) as { resultData?: { transaction?: { updateId?: string } } } | null;
+
+  return { updateId: json?.resultData?.transaction?.updateId ?? null };
 }
 
 /**

@@ -1,7 +1,20 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  CaretDown,
+  CheckCircle,
+  CircleNotch,
+  Clock,
+  PaperPlaneTilt,
+  Receipt,
+  Robot,
+  ShieldCheck,
+  ShieldWarning,
+  WarningCircle,
+} from "@phosphor-icons/react";
 import {
   apiFetch,
   getRole,
@@ -13,6 +26,12 @@ import {
   type ChatActionResult,
 } from "@/components/api";
 import { useToast } from "@/components/Toast";
+import {
+  InlineError,
+  PageHeader,
+  Skeleton,
+  buttonSecondary,
+} from "@/components/ui";
 
 const SUGGESTED_PROMPTS = [
   "Pay $200 to Cloud Operations",
@@ -25,206 +44,156 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   action?: ChatActionResult | null;
+  error?: string;
+  retryText?: string;
 }
 
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`bg-elevated rounded animate-skeleton ${className}`} />;
-}
-
-function ActionCard({ action }: { action: ChatActionResult }) {
-  const styles = {
+function ActionResult({ action }: { action: ChatActionResult }) {
+  const config = {
     executed: {
-      border: "border-emerald-800",
-      bg: "bg-emerald-950/30",
-      badge: "bg-emerald-900 text-emerald-200 border-emerald-700",
-      icon: "✓",
       label: "Executed",
+      icon: CheckCircle,
+      frame: "border-emerald-900/70 bg-emerald-950/25",
+      tone: "text-emerald-300",
     },
     pending: {
-      border: "border-amber-800",
-      bg: "bg-amber-950/20",
-      badge: "bg-amber-900/60 text-amber-200 border-amber-700",
-      icon: "◎",
       label: "Awaiting approval",
+      icon: Clock,
+      frame: "border-amber-900/70 bg-amber-950/25",
+      tone: "text-amber-300",
     },
     denied: {
-      border: "border-red-900",
-      bg: "bg-red-950/20",
-      badge: "bg-red-900/60 text-red-200 border-red-800",
-      icon: "✕",
       label: "Denied",
+      icon: ShieldWarning,
+      frame: "border-red-900/70 bg-red-950/25",
+      tone: "text-red-300",
     },
-  };
-  const s = styles[action.outcome];
+  }[action.outcome];
+  const Icon = config.icon;
 
   return (
-    <div className={`mt-2 rounded-lg border p-3 text-xs ${s.border} ${s.bg}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-medium text-[10px] ${s.badge}`}
-        >
-          <span>{s.icon}</span>
-          {s.label}
+    <div className={`mt-3 rounded-control border p-3.5 ${config.frame}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${config.tone}`}>
+          <Icon className="size-4" weight="fill" />
+          {config.label}
         </span>
-        <span className="font-mono text-white font-semibold">
-          {formatUSD(action.amount)}
-        </span>
-        <span className="text-slate-400">→ {action.counterpartyId}</span>
-        <span className="px-1.5 py-0.5 rounded bg-elevated border border-rim text-slate-500 font-mono text-[10px]">
-          {action.category}
-        </span>
+        <span className="font-mono text-sm font-semibold text-ink">{formatUSD(action.amount)}</span>
+        <ArrowRight className="size-3.5 text-faint" />
+        <span className="text-xs text-muted">{action.counterpartyId}</span>
       </div>
-
-      {action.outcome === "executed" && action.receiptId && (
-        <div className="text-slate-500 font-mono">
-          Receipt:{" "}
-          <span className="text-slate-300">{action.receiptId}</span>
+      <dl className="mt-3 grid gap-2 border-t border-rim/70 pt-3 text-xs sm:grid-cols-2">
+        <div>
+          <dt className="text-faint">Category</dt>
+          <dd className="mt-0.5 font-mono text-muted">{action.category}</dd>
         </div>
+        <div>
+          <dt className="text-faint">Purpose</dt>
+          <dd className="mt-0.5 truncate text-muted">{action.purpose}</dd>
+        </div>
+      </dl>
+      {action.outcome === "executed" && action.receiptId && (
+        <p className="mt-3 flex items-center gap-2 font-mono text-[11px] text-muted">
+          <Receipt className="size-3.5" />
+          Receipt {action.receiptId}
+        </p>
       )}
       {action.outcome === "pending" && (
-        <div className="text-amber-400/70">
-          Amount {formatUSD(action.amount)} exceeds auto-approve threshold. CFO
-          approval required.
-        </div>
+        <p className="mt-3 text-xs leading-5 text-amber-200/75">
+          Request exceeds automatic authority. CFO approval is required.
+        </p>
       )}
       {action.outcome === "denied" && action.denialCode && (
-        <div>
-          <span className="font-mono text-red-400 text-[10px]">
-            {action.denialCode}
-          </span>
-          <p className="text-slate-400 mt-0.5">
+        <div className="mt-3">
+          <p className="font-mono text-[11px] text-red-300">{action.denialCode}</p>
+          <p className="mt-1 text-xs leading-5 text-red-200/70">
             {DENIAL_EXPLANATIONS[action.denialCode] ?? action.denialCode}
           </p>
-          <p className="text-slate-600 mt-1 text-[10px]">
-            Denial recorded on Canton ledger — ledger enforces this, not the
-            AI.
-          </p>
-        </div>
-      )}
-      {action.purpose && (
-        <div className="text-slate-600 mt-1 truncate">
-          Purpose: {action.purpose}
+          <p className="mt-1 text-[11px] text-faint">Denial recorded on Canton ledger.</p>
         </div>
       )}
     </div>
   );
 }
 
-function MandateSidebar({ mandate }: { mandate: MandateView | null | undefined }) {
-  if (mandate === undefined) {
+function MandatePanel({
+  mandate,
+  error,
+  onRetry,
+}: {
+  mandate: MandateView | null | undefined;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (mandate === undefined && !error) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-12" />
-        <Skeleton className="h-12" />
+      <div aria-busy="true" className="space-y-4">
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
       </div>
     );
   }
-
+  if (error) return <InlineError title="Mandate unavailable" message={error} onRetry={onRetry} />;
   if (mandate === null) {
     return (
-      <div className="p-3 rounded-lg border border-amber-900/40 bg-amber-950/10 text-xs text-amber-400">
-        No active mandate. CFO must create one before the agent can transact.
+      <div className="rounded-control border border-amber-900/70 bg-amber-950/25 p-4 text-xs leading-5 text-amber-200">
+        CFO must create a mandate before this agent can transact.
       </div>
     );
   }
+  if (!mandate) return null;
 
-  const statusColors = {
-    Active: "text-emerald-400",
-    Paused: "text-amber-400",
-    Revoked: "text-red-400",
-  };
+  const statusTone = {
+    Active: "text-emerald-300",
+    Paused: "text-amber-300",
+    Revoked: "text-red-300",
+  }[mandate.status];
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1">
-          Mandate Status
-        </p>
-        <p className={`text-sm font-semibold ${statusColors[mandate.status]}`}>
-          {mandate.status}
-        </p>
+    <div>
+      <div className="flex items-center justify-between gap-3 border-b border-rim pb-4">
+        <div>
+          <p className="text-xs text-faint">Mandate status</p>
+          <p className={`mt-1 text-sm font-semibold ${statusTone}`}>{mandate.status}</p>
+        </div>
+        <span className="font-mono text-[11px] text-faint">v{mandate.version}</span>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid gap-4 py-4 sm:grid-cols-2 lg:grid-cols-1">
         <div>
-          <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1">
-            Daily Remaining
-          </p>
-          <p className="font-mono text-white text-sm">
+          <p className="text-xs text-faint">Daily remaining</p>
+          <p className="mt-1 font-mono text-base font-semibold text-ink">
             {formatUSD(subtract(mandate.dailyMaximum, mandate.dailySpent))}
           </p>
-          <p className="text-[10px] text-slate-600 mt-0.5">
-            of {formatUSD(mandate.dailyMaximum)} cap
-          </p>
-          <div className="h-0.5 bg-rim rounded-full mt-1.5 overflow-hidden">
-            <div
-              className="h-full bg-cyan-600 rounded-full"
-              style={{
-                width: `${Math.min(
-                  ((parseFloat(mandate.dailySpent) || 0) /
-                    (parseFloat(mandate.dailyMaximum) || 1)) *
-                    100,
-                  100
-                )}%`,
-              }}
-            />
-          </div>
+          <p className="mt-0.5 text-[11px] text-faint">of {formatUSD(mandate.dailyMaximum)}</p>
         </div>
-
         <div>
-          <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1">
-            Monthly Remaining
+          <p className="text-xs text-faint">Monthly remaining</p>
+          <p className="mt-1 font-mono text-base font-semibold text-ink">
+            {formatUSD(subtract(mandate.monthlyMaximum, mandate.monthlySpent))}
           </p>
-          <p className="font-mono text-white text-sm">
-            {formatUSD(
-              subtract(mandate.monthlyMaximum, mandate.monthlySpent)
-            )}
-          </p>
-          <p className="text-[10px] text-slate-600 mt-0.5">
-            of {formatUSD(mandate.monthlyMaximum)} cap
-          </p>
+          <p className="mt-0.5 text-[11px] text-faint">of {formatUSD(mandate.monthlyMaximum)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-faint">Automatic authority</p>
+          <p className="mt-1 font-mono text-sm text-ink">Below {formatUSD(mandate.autoApproveLimit)}</p>
         </div>
       </div>
 
-      <div>
-        <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1">
-          Auto-approve below
+      <div className="border-t border-rim pt-4">
+        <p className="flex items-center gap-2 text-xs font-medium text-muted">
+          <ShieldCheck className="size-4 text-brand-strong" />
+          Ledger-enforced scope
         </p>
-        <p className="font-mono text-slate-300 text-xs">
-          {formatUSD(mandate.autoApproveLimit)}
-        </p>
-      </div>
-
-      <div>
-        <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-1">
-          Permitted
-        </p>
-        <div className="space-y-1">
-          {mandate.permittedCategories.map((c) => (
-            <div
-              key={c}
-              className="text-[10px] font-mono text-slate-500 flex items-center gap-1"
-            >
-              <span className="text-emerald-600">✓</span> {c}
-            </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {mandate.permittedCategories.map((category) => (
+            <span key={category} className="rounded-md border border-rim px-2 py-1 text-[10px] text-faint">{category}</span>
           ))}
-          {mandate.counterparties.map((cp) => (
-            <div
-              key={cp.party}
-              className="text-[10px] font-mono text-slate-500 flex items-center gap-1"
-            >
-              <span className="text-emerald-600">✓</span> {cp.label}
-            </div>
+          {mandate.counterparties.map((counterparty) => (
+            <span key={counterparty.party} className="rounded-md border border-rim px-2 py-1 text-[10px] text-faint">{counterparty.label}</span>
           ))}
         </div>
-      </div>
-
-      <div className="pt-2 border-t border-rim">
-        <p className="text-[10px] text-slate-600 leading-relaxed">
-          Mandate v{mandate.version} · Canton ledger enforces all limits.
-          The LLM has no direct ledger authority.
-        </p>
       </div>
     </div>
   );
@@ -233,33 +202,37 @@ function MandateSidebar({ mandate }: { mandate: MandateView | null | undefined }
 export default function AgentPage() {
   const router = useRouter();
   const { toast } = useToast();
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [mandate, setMandate] = useState<MandateView | null | undefined>(
-    undefined
-  );
-
+  const [mandate, setMandate] = useState<MandateView | null | undefined>(undefined);
+  const [mandateError, setMandateError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mandateFetching = useRef(false);
 
-  // Role guard
   useEffect(() => {
     const role = getRole();
     if (role && role !== "agent") router.replace("/");
   }, [router]);
 
-  // Fetch mandate summary
   const fetchMandate = useCallback(async () => {
+    if (mandateFetching.current) return;
+    mandateFetching.current = true;
     try {
-      const m = await apiFetch<MandateView>("/api/mandate");
-      setMandate(m);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
+      const nextMandate = await apiFetch<MandateView>("/api/mandate");
+      setMandate(nextMandate);
+      setMandateError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load mandate";
+      if (message.includes("404") || message.toLowerCase().includes("not found")) {
         setMandate(null);
+        setMandateError(null);
+      } else {
+        setMandateError(message);
       }
+    } finally {
+      mandateFetching.current = false;
     }
   }, []);
 
@@ -269,183 +242,229 @@ export default function AgentPage() {
     return () => clearInterval(id);
   }, [fetchMandate]);
 
-  // Auto-scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    messagesEndRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
   }, [messages]);
 
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text || sending) return;
-
-    const userMsg: Message = {
-      id: Math.random().toString(36).slice(2),
+    if (!text || sending || mandate === null) return;
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
       role: "user",
       content: text,
     };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((previous) => [...previous, userMessage]);
     setInput("");
     setSending(true);
 
     try {
-      const res = await apiFetch<ChatResponse>("/api/agent/chat", {
+      const response = await apiFetch<ChatResponse>("/api/agent/chat", {
         method: "POST",
         body: JSON.stringify({ message: text }),
       });
-      const assistantMsg: Message = {
-        id: Math.random().toString(36).slice(2),
-        role: "assistant",
-        content: res.reply,
-        action: res.action,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      // Refresh mandate after action
-      if (res.action) fetchMandate();
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Agent error");
-      // Remove optimistic user message on failure
-      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: response.reply,
+          action: response.action,
+        },
+      ]);
+      if (response.action) {
+        fetchMandate();
+        const explorerLink = {
+          label: "View on Canton Explorer",
+          href: response.action.explorerUrl,
+        };
+        if (response.action.outcome === "executed") {
+          toast("success", "Action executed on ledger", explorerLink);
+        } else if (response.action.outcome === "pending") {
+          toast("info", "Escalated for human approval", explorerLink);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Agent request failed";
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Request was not submitted.",
+          error: message,
+          retryText: text,
+        },
+      ]);
+      toast("error", message);
     } finally {
       setSending(false);
       textareaRef.current?.focus();
     }
   };
 
+  const inputDisabled = sending || mandate === null;
+
   return (
-    <div className="animate-fade-in">
-      <div className="mb-4">
-        <p className="text-xs font-mono text-cyan-500 uppercase tracking-wider mb-0.5">
-          AI Agent Console
-        </p>
-        <h1 className="text-white font-bold text-xl">Treasury Copilot</h1>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Agent console"
+        description="Describe a financial intent. Policy evaluation and ledger execution remain deterministic."
+      />
 
-      <div className="flex gap-5 h-[calc(100vh-180px)] min-h-[500px]">
-        {/* Sidebar */}
-        <div className="hidden lg:block w-52 shrink-0">
-          <div className="p-4 rounded-lg border border-rim bg-surface sticky top-20">
-            <p className="text-[10px] font-mono text-slate-600 uppercase tracking-wider mb-3">
-              Mandate Summary
-            </p>
-            <MandateSidebar mandate={mandate} />
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <details className="group rounded-panel border border-rim bg-surface p-4 lg:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-ink">
+            <span>Current authority</span>
+            <span className="flex items-center gap-2">
+              {mandate && (
+                <span className="text-xs font-medium text-muted">{mandate.status}</span>
+              )}
+              <CaretDown className="size-4 text-faint transition group-open:rotate-180" />
+            </span>
+          </summary>
+          <div className="mt-4 border-t border-rim pt-4">
+            <MandatePanel mandate={mandate} error={mandateError} onRetry={fetchMandate} />
           </div>
-        </div>
+        </details>
 
-        {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 rounded-lg border border-rim bg-surface overflow-hidden">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && !sending && (
-              <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                <div className="w-10 h-10 rounded-full border border-rim flex items-center justify-center text-slate-600 text-lg mb-3">
-                  ◈
+        <aside className="hidden rounded-panel border border-rim bg-surface p-4 lg:sticky lg:top-20 lg:block lg:self-start">
+          <h2 className="mb-4 text-sm font-semibold text-ink">Current authority</h2>
+          <MandatePanel mandate={mandate} error={mandateError} onRetry={fetchMandate} />
+        </aside>
+
+        <section className="flex min-h-[calc(100dvh-15rem)] flex-col overflow-hidden rounded-panel border border-rim bg-surface lg:h-[calc(100dvh-9.75rem)] lg:min-h-[580px]">
+          <div className="flex items-center justify-between border-b border-rim px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-control bg-brand-soft text-brand-strong">
+                <Robot className="size-4" weight="fill" />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-ink">Treasury agent</h2>
+                <p className="text-[11px] text-faint">One financial tool. No direct ledger access.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-[320px] flex-1 overflow-y-auto p-4 sm:p-5">
+            {messages.length === 0 && !sending ? (
+              <div className="flex h-full min-h-[300px] flex-col items-center justify-center px-5 text-center">
+                <div className="flex size-12 items-center justify-center rounded-panel border border-rim bg-elevated text-muted">
+                  <ShieldCheck className="size-6" weight="duotone" />
                 </div>
-                <p className="text-slate-500 text-sm mb-1">
-                  AI treasury agent ready
-                </p>
-                <p className="text-slate-600 text-xs max-w-xs">
-                  Propose a transaction using natural language. The Canton
-                  mandate evaluates every request on-ledger.
+                <h3 className="mt-4 text-base font-semibold text-ink">Ready for a financial intent</h3>
+                <p className="mt-2 max-w-md text-sm leading-6 text-muted">
+                  Cation converts your request into fixed inputs, then the current mandate decides the outcome.
                 </p>
               </div>
-            )}
-
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] ${
-                    msg.role === "user"
-                      ? "bg-cyan-950/40 border border-cyan-900/50 rounded-2xl rounded-tr-sm"
-                      : "bg-elevated border border-rim rounded-2xl rounded-tl-sm"
-                  } px-4 py-3`}
-                >
-                  {msg.role === "assistant" && (
-                    <p className="text-[10px] font-mono text-slate-600 mb-1.5 uppercase tracking-wider">
-                      Agent
-                    </p>
-                  )}
-                  <p
-                    className={`text-sm leading-relaxed ${
-                      msg.role === "user" ? "text-cyan-100" : "text-slate-200"
-                    }`}
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {msg.content}
-                  </p>
-                  {msg.role === "assistant" && msg.action && (
-                    <ActionCard action={msg.action} />
-                  )}
-                </div>
-              </div>
-            ))}
+                    <div
+                      className={`max-w-[92%] rounded-panel px-4 py-3 sm:max-w-[82%] ${
+                        message.role === "user"
+                          ? "bg-brand text-white"
+                          : "border border-rim bg-elevated text-ink"
+                      }`}
+                    >
+                      {message.role === "assistant" && (
+                        <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-faint">
+                          <Robot className="size-3.5" />
+                          Cation agent
+                        </p>
+                      )}
+                      <p className="text-sm leading-6">{message.content}</p>
+                      {message.action && <ActionResult action={message.action} />}
+                      {message.error && (
+                        <div className="mt-3 rounded-control border border-red-900/70 bg-red-950/25 p-3">
+                          <p className="flex gap-2 text-xs leading-5 text-red-200">
+                            <WarningCircle className="mt-0.5 size-4 shrink-0" weight="fill" />
+                            {message.error}
+                          </p>
+                          {message.retryText && (
+                            <button
+                              type="button"
+                              onClick={() => handleSend(message.retryText)}
+                              disabled={sending}
+                              className={`${buttonSecondary} mt-3`}
+                            >
+                              Retry request
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                ))}
 
-            {sending && (
-              <div className="flex justify-start">
-                <div className="bg-elevated border border-rim rounded-2xl rounded-tl-sm px-4 py-3">
-                  <p className="text-[10px] font-mono text-slate-600 mb-1.5 uppercase tracking-wider">
-                    Agent
-                  </p>
-                  <div className="flex gap-1 items-center h-4">
-                    {[0, 1, 2].map((i) => (
-                      <span
-                        key={i}
-                        className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-bounce"
-                        style={{ animationDelay: `${i * 150}ms` }}
-                      />
-                    ))}
+                {sending && (
+                  <div className="flex justify-start" role="status">
+                    <div className="flex items-center gap-2 rounded-panel border border-rim bg-elevated px-4 py-3 text-sm text-muted">
+                      <CircleNotch className="size-4 animate-spin text-brand" />
+                      Evaluating intent and mandate
+                    </div>
                   </div>
-                </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggested chips */}
           {messages.length === 0 && (
-            <div className="px-4 pb-2 flex gap-2 flex-wrap">
-              {SUGGESTED_PROMPTS.map((p) => (
+            <div className="flex gap-2 overflow-x-auto border-t border-rim px-4 py-3">
+              {SUGGESTED_PROMPTS.map((prompt) => (
                 <button
-                  key={p}
-                  onClick={() => handleSend(p)}
-                  disabled={sending}
-                  className="px-3 py-1.5 rounded-full border border-rim bg-elevated hover:bg-rim text-slate-400 hover:text-slate-200 text-xs transition-colors disabled:opacity-50"
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleSend(prompt)}
+                  disabled={inputDisabled}
+                  className="min-h-10 shrink-0 whitespace-nowrap rounded-control border border-rim bg-elevated px-3 text-xs text-muted transition hover:border-rim-strong hover:text-ink active:scale-[0.98] disabled:opacity-45"
                 >
-                  {p}
+                  {prompt}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Input */}
-          <div className="border-t border-rim p-3 flex gap-2 items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Describe a transaction… (Enter to send, Shift+Enter for newline)"
-              rows={1}
-              disabled={sending}
-              className="flex-1 resize-none bg-transparent text-slate-200 placeholder:text-slate-600 text-sm focus:outline-none disabled:opacity-50 min-h-[36px] max-h-[120px] py-1.5 font-sans"
-              style={{ lineHeight: "1.5" }}
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() || sending}
-              className="shrink-0 w-8 h-8 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white text-sm transition-colors"
-            >
-              ↑
-            </button>
+          <div className="border-t border-rim p-3 sm:p-4">
+            {mandate === null && (
+              <p className="mb-2 text-xs text-amber-300">No mandate. Ask the CFO to create one.</p>
+            )}
+            <div className="flex items-end gap-2 rounded-control border border-rim bg-elevated p-2 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSend();
+                  }
+                }}
+                aria-label="Financial intent"
+                placeholder="Describe a transaction"
+                rows={1}
+                disabled={inputDisabled}
+                className="min-h-10 max-h-32 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-ink placeholder:text-faint focus:outline-none disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => handleSend()}
+                disabled={!input.trim() || inputDisabled}
+                aria-label="Send financial intent"
+                className="flex size-11 shrink-0 items-center justify-center rounded-control bg-brand text-white transition hover:bg-brand-strong active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {sending ? <CircleNotch className="size-5 animate-spin" /> : <PaperPlaneTilt className="size-5" weight="fill" />}
+              </button>
+            </div>
+            <p className="mt-2 px-1 text-[11px] text-faint">Enter to send. Shift + Enter for a new line.</p>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

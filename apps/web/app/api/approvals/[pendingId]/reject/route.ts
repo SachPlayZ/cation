@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { ok, apiError, handleError } from "@/lib/apiResponse";
 import { exerciseChoice, tid } from "@/lib/ledger";
+import { explorerPartyUrl } from "@/lib/explorer";
 
 export async function POST(
   req: NextRequest,
@@ -26,7 +27,7 @@ export async function POST(
       }
     );
 
-    return ok({ ok: true });
+    return ok({ ok: true, explorerUrl: explorerPartyUrl(cfoParty) });
   } catch (err) {
     return handleError(err);
   }

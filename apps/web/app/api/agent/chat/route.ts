@@ -4,6 +4,7 @@ import { ok, apiError, handleError } from "@/lib/apiResponse";
 import { getMandateView, getTreasuryDeposit } from "@/lib/mandateUtils";
 import { queryAcs, exerciseChoice, tid, isContentionError } from "@/lib/ledger";
 import { resolveCounterparty, getAllCounterparties } from "@/lib/partyMap";
+import { explorerPartyUrl } from "@/lib/explorer";
 import { runAgentTurn, type ProposedAction } from "@cation/agent";
 import { z } from "zod";
 import { randomUUID } from "crypto";
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
         outcome: result.outcome,
         denialCode: result.denialCode,
         receiptId: result.receiptId,
+        explorerUrl: explorerPartyUrl(agentParty),
       },
     });
   } catch (err) {

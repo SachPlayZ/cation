@@ -1,25 +1,56 @@
 import type { Metadata } from "next";
-import { Syne, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const syne = Syne({
+const geist = Geist({
   subsets: ["latin"],
-  variable: "--font-syne",
+  variable: "--font-geist",
   display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
 });
 
-const jbMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  variable: "--font-jb-mono",
+  variable: "--font-geist-mono",
   display: "swap",
-  weight: ["400", "500", "600"],
 });
+
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000");
 
 export const metadata: Metadata = {
-  title: "Cation — Private Financial Permissions for AI Agents",
+  metadataBase: new URL(siteUrl),
+  title: "Cation | Private Financial Permissions for AI Agents",
   description:
     "Authorization layer for agentic finance on Canton Network. The AI proposes. The mandate decides.",
+  openGraph: {
+    title: "Cation | Private Financial Permissions for AI Agents",
+    description:
+      "Programmable financial authority for AI agents, enforced on-ledger as Daml contracts.",
+    url: "/",
+    siteName: "Cation",
+    locale: "en_US",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Cation, private authority for agentic finance",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cation | Private Financial Permissions for AI Agents",
+    description:
+      "Programmable financial authority for AI agents, enforced on-ledger as Daml contracts.",
+    images: ["/og-image.png"],
+  },
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -36,8 +67,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${syne.variable} ${jbMono.variable}`}>
-      <body className="bg-canvas text-slate-100 min-h-screen font-sans antialiased">
+    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
+      <body className="bg-canvas text-ink min-h-[100dvh] font-sans antialiased">
         {children}
       </body>
     </html>

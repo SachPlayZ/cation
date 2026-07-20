@@ -87,7 +87,6 @@ export async function POST(req: NextRequest) {
       },
       { actAs: [cfoParty], commandId: `create-offer-${mandateId}` }
     );
-    void offerResult; // offset used implicitly by queryAcs getting latest
 
     // 2. Find the created MandateOffer by mandateId from ACS
     const { queryAcs } = await import("@/lib/ledger");
@@ -111,10 +110,15 @@ export async function POST(req: NextRequest) {
       { actAs: [agentParty], commandId: `accept-mandate-${mandateId}` }
     );
 
-    // 4. Return mandate view
+    // 4. Return mandate view. Prefer a real transaction-deep-link over the
+    // generic party-activity link when the create call gave us one.
     const view = await getMandateView(jwt.party);
     if (!view) {
       return apiError(502, "LEDGER_ERROR", "Mandate not visible after accept");
+    }
+    if (offerResult.updateId) {
+      const { explorerTransactionUrl } = await import("@/lib/explorer");
+      view.explorerUrl = explorerTransactionUrl(offerResult.updateId);
     }
     const { _stateCid: _, _termsCid: __, _depositCid: ___, ...out } = view;
     return ok(out);

@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowClockwise,
+  CheckCircle,
+  ShieldCheck,
+  ShieldWarning,
+} from "@phosphor-icons/react";
 import {
   apiFetch,
   getRole,
@@ -10,35 +16,42 @@ import {
   DENIAL_EXPLANATIONS,
   type ActivityItem,
 } from "@/components/api";
-import { useToast } from "@/components/Toast";
-
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`bg-elevated rounded animate-skeleton ${className}`} />;
-}
+import {
+  EmptyState,
+  InlineError,
+  PageHeader,
+  PrivacyBoundary,
+  Skeleton,
+} from "@/components/ui";
 
 export default function CompliancePage() {
   const router = useRouter();
-  const { toast } = useToast();
-
   const [violations, setViolations] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const fetchingRef = useRef(false);
 
-  // Role guard
   useEffect(() => {
     const role = getRole();
     if (role && role !== "compliance") router.replace("/");
   }, [router]);
 
   const fetchViolations = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
-      const res = await apiFetch<{ items: ActivityItem[] }>("/api/activity");
-      setViolations(res.items.filter((i) => i.type === "violation"));
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Fetch error");
+      const response = await apiFetch<{ items: ActivityItem[] }>("/api/activity");
+      setViolations(response.items.filter((item) => item.type === "violation"));
+      setError(null);
+      setLastUpdated(new Date());
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Could not load violations");
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     fetchViolations();
@@ -47,122 +60,99 @@ export default function CompliancePage() {
   }, [fetchViolations]);
 
   return (
-    <div className="animate-fade-in max-w-2xl">
-      {/* Header */}
-      <div className="mb-6">
-        <p className="text-xs font-mono text-violet-400 uppercase tracking-wider mb-0.5">
-          Compliance View
-        </p>
-        <h1 className="text-white font-bold text-xl mb-3">
-          Policy Violations
-        </h1>
-
-        {/* Privacy notice */}
-        <div className="p-4 rounded-lg border border-violet-900/40 bg-violet-950/10">
-          <p className="text-xs font-mono text-violet-400 uppercase tracking-wider mb-2">
-            Canton ledger view — privacy enforced by contract
-          </p>
-          <p className="text-slate-400 text-sm leading-relaxed mb-3">
-            This view shows <strong className="text-violet-300">violations only</strong>.
-            The Canton{" "}
-            <code className="text-violet-300">PolicyViolation</code> template
-            names Compliance as an observer. No other templates do.
-          </p>
-          <div className="space-y-1.5">
-            {[
-              "Treasury balance",
-              "Mandate terms and limits",
-              "Approved receipts",
-              "Pending approval requests",
-              "Agent conversation history",
-              "Counterparty identities beyond violation records",
-            ].map((item) => (
-              <div
-                key={item}
-                className="flex items-center gap-2 text-xs text-slate-600"
-              >
-                <span className="text-red-600 font-mono">✕</span>
-                <span>{item}</span>
-              </div>
-            ))}
+    <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
+      <PageHeader
+        title="Policy violations"
+        description="Compliance sees denial records only. Contract observers enforce this boundary before data reaches the app."
+        action={
+          <div className="flex items-center gap-2 text-xs text-faint">
+            <ArrowClockwise className="size-4" />
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Awaiting refresh"}
           </div>
-          <p className="text-slate-600 text-xs mt-3 font-mono">
-            Data shown = Compliance party&apos;s Canton ACS. Not a
-            client-side filter.
-          </p>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Violations list */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20" />
-          ))}
-        </div>
-      ) : violations.length === 0 ? (
-        <div className="p-8 rounded-lg border border-rim bg-surface text-center">
-          <div className="text-2xl mb-2">◈</div>
-          <p className="text-slate-500 text-sm mb-1">No violations recorded</p>
-          <p className="text-slate-600 text-xs">
-            All agent actions have been within mandate bounds.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {violations.map((item, i) => (
-            <div
-              key={`${item.requestId}-${i}`}
-              className="p-4 rounded-lg border border-red-900/40 bg-red-950/10"
-            >
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-red-400 font-mono text-sm">✕</span>
-                  {item.code && (
-                    <span className="px-2 py-0.5 rounded bg-red-950/60 border border-red-800 text-red-300 text-[10px] font-mono">
-                      {item.code}
-                    </span>
-                  )}
-                  {item.amount && (
-                    <span className="font-mono text-sm text-white">
-                      {formatUSD(item.amount)}
-                    </span>
-                  )}
-                  {item.counterpartyLabel && (
-                    <span className="text-slate-400 text-sm">
-                      → {item.counterpartyLabel}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[11px] font-mono text-slate-600 shrink-0">
-                  {new Date(item.at).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
+      <PrivacyBoundary
+        summary="Privacy enforced by contract"
+        detail="The PolicyViolation template names Compliance as an observer. Other contract templates remain invisible to this party."
+        hiddenItems={[
+          "treasury balance",
+          "mandate terms and limits",
+          "approved receipts",
+          "pending approvals",
+          "agent conversation history",
+          "unrelated counterparty identities",
+        ]}
+      />
 
-              {item.code && DENIAL_EXPLANATIONS[item.code] && (
-                <p className="text-xs text-red-300/70 mb-1">
-                  {DENIAL_EXPLANATIONS[item.code]}
-                </p>
-              )}
-
-              <p className="text-xs text-slate-500">{item.detail}</p>
-
-              <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-slate-600">
-                <span>req: {item.requestId.slice(0, 14)}…</span>
-                <span>{formatDate(item.at)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      {error && (
+        <InlineError
+          title={violations.length > 0 ? "Refresh failed" : "Violations unavailable"}
+          message={violations.length > 0 ? `${error}. Showing last confirmed data.` : error}
+          onRetry={fetchViolations}
+        />
       )}
 
-      <p className="mt-4 text-[11px] font-mono text-slate-700 text-center">
-        {violations.length} violation{violations.length !== 1 ? "s" : ""} ·
-        auto-refresh 5s · Canton DevNet
-      </p>
+      <section className="overflow-hidden rounded-panel border border-rim bg-surface">
+        <div className="flex items-center justify-between border-b border-rim px-4 py-4 sm:px-5">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Violation records</h2>
+            <p className="mt-1 text-xs text-faint">Compliance party Canton ACS</p>
+          </div>
+          {!loading && !error && (
+            <span className="font-mono text-xs text-muted">{violations.length} total</span>
+          )}
+        </div>
+
+        {loading ? (
+          <div aria-busy="true" aria-label="Loading violations" className="space-y-3 p-4 sm:p-5">
+            {[1, 2, 3].map((item) => <Skeleton key={item} className="h-24" />)}
+          </div>
+        ) : !error && violations.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle className="size-5" />}
+            title="No violations recorded"
+            description="Every observed agent action is currently within mandate policy."
+          />
+        ) : violations.length > 0 ? (
+          <div>
+            {violations.map((item, index) => (
+              <article
+                key={`${item.requestId}-${index}`}
+                className={`p-4 sm:p-5 ${index < violations.length - 1 ? "border-b border-rim" : ""}`}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-red-950/40 text-red-400">
+                      <ShieldWarning className="size-5" weight="fill" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {item.code && (
+                          <span className="rounded-md border border-red-900/70 bg-red-950/25 px-2 py-1 font-mono text-[10px] text-red-300">
+                            {item.code}
+                          </span>
+                        )}
+                        {item.amount && <span className="font-mono text-sm font-semibold text-ink">{formatUSD(item.amount)}</span>}
+                        {item.counterpartyLabel && <span className="text-sm text-muted">to {item.counterpartyLabel}</span>}
+                      </div>
+                      {item.code && DENIAL_EXPLANATIONS[item.code] && (
+                        <p className="mt-2 text-sm leading-6 text-red-200/75">{DENIAL_EXPLANATIONS[item.code]}</p>
+                      )}
+                      <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>
+                    </div>
+                  </div>
+                  <time className="pl-12 font-mono text-[11px] text-faint sm:pl-0">{formatDate(item.at)}</time>
+                </div>
+                <div className="mt-3 flex items-center gap-2 pl-12 font-mono text-[10px] text-faint">
+                  <ShieldCheck className="size-3.5" />
+                  Request {item.requestId.slice(0, 16)}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

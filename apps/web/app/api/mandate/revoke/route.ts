@@ -11,6 +11,9 @@ export async function POST(req: NextRequest) {
 
     const view = await getMandateView(jwt.party);
     if (!view) return apiError(404, "NOT_FOUND", "No active mandate");
+    if (view.status === "Revoked") {
+      return apiError(409, "INVALID_STATE", "Mandate is already revoked");
+    }
 
     await exerciseChoice(
       tid("Cation.Mandate", "AgentMandateState"),

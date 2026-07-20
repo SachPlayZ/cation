@@ -3,8 +3,13 @@ import { requireAuth } from "@/lib/auth";
 import { ok, apiError, handleError } from "@/lib/apiResponse";
 import { getMandateView, getTreasuryDeposit } from "@/lib/mandateUtils";
 import { queryAcs, exerciseChoice, tid, isContentionError } from "@/lib/ledger";
+import { explorerPartyUrl } from "@/lib/explorer";
 
-type ApproveOutcome = { outcome: "executed" | "denied"; denialCode: string | null };
+type ApproveOutcome = {
+  outcome: "executed" | "denied";
+  denialCode: string | null;
+  explorerUrl: string;
+};
 
 const doApprove = async (
   cfoParty: string,
@@ -16,7 +21,11 @@ const doApprove = async (
 
   const deposit = await getTreasuryDeposit(cfoParty);
   if (!deposit) {
-    return { outcome: "denied", denialCode: "INSUFFICIENT_FUNDS" };
+    return {
+      outcome: "denied",
+      denialCode: "INSUFFICIENT_FUNDS",
+      explorerUrl: explorerPartyUrl(cfoParty),
+    };
   }
 
   // ApproveRequest on PendingApproval → internally exercises ExecuteApprovedAction on state
@@ -48,7 +57,13 @@ const doApprove = async (
         ? b
         : a
     );
-    if (latest) return { outcome: "executed", denialCode: null };
+    if (latest) {
+      return {
+        outcome: "executed",
+        denialCode: null,
+        explorerUrl: explorerPartyUrl(cfoParty),
+      };
+    }
   }
 
   if (violations.length > 0) {
@@ -61,11 +76,16 @@ const doApprove = async (
       return {
         outcome: "denied",
         denialCode: String(latest.payload["code"] ?? "UNKNOWN"),
+        explorerUrl: explorerPartyUrl(cfoParty),
       };
     }
   }
 
-  return { outcome: "executed", denialCode: null };
+  return {
+    outcome: "executed",
+    denialCode: null,
+    explorerUrl: explorerPartyUrl(cfoParty),
+  };
 };
 
 export async function POST(

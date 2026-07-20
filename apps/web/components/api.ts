@@ -16,6 +16,7 @@ export interface MandateView {
   permittedCategories: string[];
   counterparties: { party: string; label: string }[];
   version: number;
+  explorerUrl: string;
 }
 
 export interface ActivityItem {
@@ -50,6 +51,7 @@ export interface ChatActionResult {
   outcome: "executed" | "pending" | "denied";
   denialCode: string | null;
   receiptId: string | null;
+  explorerUrl: string;
 }
 
 export interface ChatResponse {
@@ -151,7 +153,7 @@ export async function login(
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 export function formatUSD(amount: string | undefined | null): string {
-  if (!amount) return "—";
+  if (!amount) return "-";
   const n = parseFloat(amount);
   if (isNaN(n)) return amount;
   return new Intl.NumberFormat("en-US", {

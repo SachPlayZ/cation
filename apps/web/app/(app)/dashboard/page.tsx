@@ -1,7 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowClockwise,
+  ArrowRight,
+  Bank,
+  Check,
+  CheckCircle,
+  CircleNotch,
+  Clock,
+  Pause,
+  Play,
+  Receipt,
+  ShieldWarning,
+  Warning,
+  X,
+  XCircle,
+} from "@phosphor-icons/react";
 import {
   apiFetch,
   getRole,
@@ -15,368 +31,321 @@ import {
   type CreateMandateBody,
 } from "@/components/api";
 import { useToast } from "@/components/Toast";
+import {
+  EmptyState,
+  InlineError,
+  PageHeader,
+  Section,
+  Skeleton,
+  buttonGhost,
+  buttonPrimary,
+  buttonSecondary,
+  fieldClass,
+} from "@/components/ui";
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-function Skeleton({ className = "" }: { className?: string }) {
-  return (
-    <div className={`bg-elevated rounded animate-skeleton ${className}`} />
-  );
-}
-
-function StatusBadge({ status }: { status: MandateView["status"] }) {
-  const styles = {
-    Active: "bg-emerald-950 text-emerald-300 border-emerald-800",
-    Paused: "bg-amber-950 text-amber-300 border-amber-800",
-    Revoked: "bg-red-950 text-red-300 border-red-800",
-  };
-  const dots = {
-    Active: "bg-emerald-400 animate-pulse",
-    Paused: "bg-amber-400",
-    Revoked: "bg-red-400",
-  };
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${styles[status]}`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full ${dots[status]}`} />
-      {status}
-    </span>
-  );
-}
-
-function ProgressBar({
-  spent,
-  max,
-  label,
-}: {
-  spent: string;
-  max: string;
-  label: string;
-}) {
-  const spentN = parseFloat(spent) || 0;
-  const maxN = parseFloat(max) || 1;
-  const pct = Math.min((spentN / maxN) * 100, 100);
-  const barColor =
-    pct > 90
-      ? "bg-red-500"
-      : pct > 70
-        ? "bg-amber-500"
-        : "bg-emerald-500";
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1.5">
-        <span className="text-xs text-slate-500">{label}</span>
-        <span className="text-xs font-mono text-slate-300">
-          {formatUSD(spent)}{" "}
-          <span className="text-slate-600">/ {formatUSD(max)}</span>
-        </span>
-      </div>
-      <div className="h-1 bg-rim rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="mt-0.5 text-right text-[10px] font-mono text-slate-600">
-        {formatUSD(subtract(max, spent))} remaining
-      </div>
-    </div>
-  );
-}
-
-function ActivityTypeIcon({ type }: { type: ActivityItem["type"] }) {
-  const styles: Record<ActivityItem["type"], { icon: string; cls: string }> = {
-    receipt: { icon: "↗", cls: "text-emerald-400" },
-    violation: { icon: "✕", cls: "text-red-400" },
-    pending: { icon: "◎", cls: "text-amber-400" },
-    "mandate-event": { icon: "◇", cls: "text-blue-400" },
-  };
-  const s = styles[type];
-  return (
-    <span className={`font-mono text-sm ${s.cls} shrink-0`}>{s.icon}</span>
-  );
-}
-
-// ── Mandate Create Form ────────────────────────────────────────────────────────
-
-// Must match Cation.Types.ActionCategory in the Daml model exactly.
 const KNOWN_CATEGORIES = [
-  { id: "OperationalPayment", label: "Operational Payment" },
-  { id: "TreasuryTransfer", label: "Treasury Transfer" },
-  { id: "CollateralTopUp", label: "Collateral Top-Up" },
-  { id: "PayrollDisbursement", label: "Payroll Disbursement" },
+  { id: "OperationalPayment", label: "Operational payment" },
+  { id: "TreasuryTransfer", label: "Treasury transfer" },
+  { id: "CollateralTopUp", label: "Collateral top-up" },
+  { id: "PayrollDisbursement", label: "Payroll disbursement" },
   { id: "Reimbursement", label: "Reimbursement" },
 ];
 
-// Must match the labels registered in lib/partyMap.ts's getAllCounterparties().
 const KNOWN_COUNTERPARTIES = [
   { id: "cloud-operations", label: "Cloud Operations" },
   { id: "reserve-account", label: "Treasury Reserve" },
 ];
 
-function MandateForm({ onCreated }: { onCreated: (m: MandateView) => void }) {
+function StatusBadge({ status }: { status: MandateView["status"] }) {
+  const styles = {
+    Active: "border-emerald-900/70 bg-emerald-950/35 text-emerald-300",
+    Paused: "border-amber-900/70 bg-amber-950/35 text-amber-300",
+    Revoked: "border-red-900/70 bg-red-950/35 text-red-300",
+  };
+  const Icon = status === "Active" ? CheckCircle : status === "Paused" ? Pause : XCircle;
+  return (
+    <span
+      className={`inline-flex min-h-7 items-center gap-1.5 rounded-control border px-2.5 text-xs font-medium ${styles[status]}`}
+    >
+      <Icon className="size-3.5" weight="fill" />
+      {status}
+    </span>
+  );
+}
+
+function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
+  const cls = "size-4";
+  if (type === "receipt") return <Receipt className={`${cls} text-emerald-400`} />;
+  if (type === "violation") return <ShieldWarning className={`${cls} text-red-400`} />;
+  if (type === "pending") return <Clock className={`${cls} text-amber-400`} />;
+  return <ArrowClockwise className={`${cls} text-muted`} />;
+}
+
+function UsageMetric({
+  label,
+  spent,
+  maximum,
+}: {
+  label: string;
+  spent: string;
+  maximum: string;
+}) {
+  const spentN = parseFloat(spent) || 0;
+  const maxN = parseFloat(maximum) || 1;
+  const pct = Math.min(Math.round((spentN / maxN) * 100), 100);
+  const tone = pct > 90 ? "text-red-400" : pct > 70 ? "text-amber-400" : "text-ink";
+  return (
+    <div className="rounded-control border border-rim bg-elevated p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium text-muted">{label}</p>
+          <p className={`mt-2 font-mono text-xl font-semibold tracking-[-0.03em] ${tone}`}>
+            {formatUSD(subtract(maximum, spent))}
+          </p>
+          <p className="mt-1 text-xs text-faint">remaining of {formatUSD(maximum)}</p>
+        </div>
+        <span className={`font-mono text-sm font-medium ${tone}`}>{pct}% used</span>
+      </div>
+      <div className="mt-4 h-px bg-rim">
+        <div className="h-px bg-brand transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void }) {
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
-
   const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
-
-  const [form, setForm] = useState<{
-    autoApproveLimit: string;
-    perActionMaximum: string;
-    dailyMaximum: string;
-    monthlyMaximum: string;
-    expiresAt: string;
-    counterpartyIds: string[];
-    categories: string[];
-  }>({
+  const [form, setForm] = useState({
     autoApproveLimit: "500",
     perActionMaximum: "2000",
     dailyMaximum: "5000",
     monthlyMaximum: "20000",
     expiresAt: thirtyDays,
-    counterpartyIds: ["cloud-operations", "treasury-reserve"],
+    counterpartyIds: ["cloud-operations", "reserve-account"],
     categories: ["OperationalPayment", "TreasuryTransfer"],
   });
 
-  const toggleArr = (
-    key: "counterpartyIds" | "categories",
-    val: string
-  ) => {
-    setForm((prev) => ({
-      ...prev,
-      [key]: prev[key].includes(val)
-        ? prev[key].filter((x) => x !== val)
-        : [...prev[key], val],
+  const toggleArr = (key: "counterpartyIds" | "categories", value: string) => {
+    setForm((previous) => ({
+      ...previous,
+      [key]: previous[key].includes(value)
+        ? previous[key].filter((item) => item !== value)
+        : [...previous[key], value],
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (form.categories.length === 0 || form.counterpartyIds.length === 0) {
+      toast("warning", "Choose at least one category and counterparty");
+      return;
+    }
     setSubmitting(true);
     try {
       const body: CreateMandateBody = {
         ...form,
-        expiresAt: new Date(form.expiresAt + "T23:59:59Z").toISOString(),
+        expiresAt: new Date(`${form.expiresAt}T23:59:59Z`).toISOString(),
       };
       const mandate = await apiFetch<MandateView>("/api/mandate", {
         method: "POST",
         body: JSON.stringify(body),
       });
-      toast("success", "Mandate created and accepted by agent");
+      toast("success", "Mandate created and accepted by agent", {
+        label: "View on Canton Explorer",
+        href: mandate.explorerUrl,
+      });
       onCreated(mandate);
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to create mandate");
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : "Failed to create mandate");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const field =
-    "w-full px-3 py-2 bg-elevated border border-rim rounded-md text-sm text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-600/60 focus:ring-1 focus:ring-amber-600/20 transition-colors";
-
-  const label = "block text-xs text-slate-500 mb-1.5";
+  const amountFields = [
+    ["autoApproveLimit", "Auto-approve below", "Actions below this amount execute without review."],
+    ["perActionMaximum", "Per-action maximum", "Hard cap for any single request."],
+    ["dailyMaximum", "Daily cap", "Maximum cumulative spend per day."],
+    ["monthlyMaximum", "Monthly cap", "Maximum cumulative spend per month."],
+  ] as const;
 
   return (
-    <div className="max-w-xl animate-fade-in">
-      <div className="mb-6">
-        <h2 className="text-white font-semibold text-lg mb-1">
-          Create agent mandate
-        </h2>
-        <p className="text-slate-500 text-sm">
-          Define the exact financial authority delegated to the AI agent. All
-          limits are enforced on-ledger — the agent cannot exceed them.
+    <form onSubmit={handleSubmit} className="space-y-7">
+      <div>
+        <h2 className="text-lg font-semibold tracking-[-0.02em] text-ink">Create agent mandate</h2>
+        <p className="mt-1 max-w-xl text-sm leading-6 text-muted">
+          Define deterministic financial authority. Every limit is enforced on the Canton ledger.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={label}>
-              Auto-approve below (no human needed)
+      <div className="grid gap-4 sm:grid-cols-2">
+        {amountFields.map(([key, label, help]) => (
+          <div key={key}>
+            <label htmlFor={key} className="mb-2 block text-sm font-medium text-ink">
+              {label}
             </label>
-            <input
-              type="text"
-              className={field}
-              value={form.autoApproveLimit}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, autoApproveLimit: e.target.value }))
-              }
-              placeholder="500.00"
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-3 text-sm text-faint">$</span>
+              <input
+                id={key}
+                type="text"
+                inputMode="decimal"
+                required
+                pattern="^\\d+(\\.\\d{1,2})?$"
+                aria-describedby={`${key}-help`}
+                className={`${fieldClass} pl-7 font-mono`}
+                value={form[key]}
+                onChange={(event) => setForm((previous) => ({ ...previous, [key]: event.target.value }))}
+              />
+            </div>
+            <p id={`${key}-help`} className="mt-1.5 text-xs leading-5 text-faint">{help}</p>
           </div>
-          <div>
-            <label className={label}>Per-action maximum (hard cap)</label>
-            <input
-              type="text"
-              className={field}
-              value={form.perActionMaximum}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, perActionMaximum: e.target.value }))
-              }
-              placeholder="2000.00"
-            />
-          </div>
-          <div>
-            <label className={label}>Daily cap</label>
-            <input
-              type="text"
-              className={field}
-              value={form.dailyMaximum}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, dailyMaximum: e.target.value }))
-              }
-              placeholder="5000.00"
-            />
-          </div>
-          <div>
-            <label className={label}>Monthly cap</label>
-            <input
-              type="text"
-              className={field}
-              value={form.monthlyMaximum}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, monthlyMaximum: e.target.value }))
-              }
-              placeholder="20000.00"
-            />
-          </div>
-        </div>
+        ))}
+      </div>
 
-        <div>
-          <label className={label}>Mandate expires</label>
-          <input
-            type="date"
-            className={field}
-            value={form.expiresAt}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, expiresAt: e.target.value }))
-            }
-          />
-        </div>
+      <div className="max-w-xs">
+        <label htmlFor="expiresAt" className="mb-2 block text-sm font-medium text-ink">
+          Mandate expiry
+        </label>
+        <input
+          id="expiresAt"
+          type="date"
+          required
+          min={new Date().toISOString().split("T")[0]}
+          className={fieldClass}
+          value={form.expiresAt}
+          onChange={(event) => setForm((previous) => ({ ...previous, expiresAt: event.target.value }))}
+        />
+      </div>
 
-        <div>
-          <label className={label}>Permitted transaction categories</label>
-          <div className="flex flex-wrap gap-2">
-            {KNOWN_CATEGORIES.map(({ id, label: lbl }) => (
+      <fieldset>
+        <legend className="text-sm font-medium text-ink">Permitted categories</legend>
+        <p className="mt-1 text-xs text-faint">Only selected transaction types can pass policy evaluation.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {KNOWN_CATEGORIES.map(({ id, label }) => {
+            const checked = form.categories.includes(id);
+            return (
               <label
                 key={id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-colors ${
-                  form.categories.includes(id)
-                    ? "border-amber-600 bg-amber-950/30 text-amber-300"
-                    : "border-rim bg-elevated text-slate-500 hover:border-slate-600"
+                className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-control border px-3 text-xs font-medium transition active:scale-[0.98] ${
+                  checked
+                    ? "border-brand/60 bg-brand-soft text-brand-strong"
+                    : "border-rim bg-elevated text-muted hover:border-rim-strong hover:text-ink"
                 }`}
               >
                 <input
                   type="checkbox"
                   className="sr-only"
-                  checked={form.categories.includes(id)}
+                  checked={checked}
                   onChange={() => toggleArr("categories", id)}
                 />
-                {lbl}
+                {checked && <Check className="size-3.5" weight="bold" />}
+                {label}
               </label>
-            ))}
-          </div>
+            );
+          })}
         </div>
+      </fieldset>
 
-        <div>
-          <label className={label}>Approved counterparties</label>
-          <div className="flex flex-wrap gap-2">
-            {KNOWN_COUNTERPARTIES.map(({ id, label: lbl }) => (
+      <fieldset>
+        <legend className="text-sm font-medium text-ink">Approved counterparties</legend>
+        <p className="mt-1 text-xs text-faint">Requests to any other party are denied and recorded.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {KNOWN_COUNTERPARTIES.map(({ id, label }) => {
+            const checked = form.counterpartyIds.includes(id);
+            return (
               <label
                 key={id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-colors ${
-                  form.counterpartyIds.includes(id)
-                    ? "border-emerald-700 bg-emerald-950/30 text-emerald-300"
-                    : "border-rim bg-elevated text-slate-500 hover:border-slate-600"
+                className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-control border px-3 text-xs font-medium transition active:scale-[0.98] ${
+                  checked
+                    ? "border-brand/60 bg-brand-soft text-brand-strong"
+                    : "border-rim bg-elevated text-muted hover:border-rim-strong hover:text-ink"
                 }`}
               >
                 <input
                   type="checkbox"
                   className="sr-only"
-                  checked={form.counterpartyIds.includes(id)}
+                  checked={checked}
                   onChange={() => toggleArr("counterpartyIds", id)}
                 />
-                {lbl}
+                {checked && <Check className="size-3.5" weight="bold" />}
+                {label}
               </label>
-            ))}
-          </div>
-          <p className="text-[11px] text-slate-600 mt-2 font-mono">
-            Counterparties not listed above are blocked — e.g. &quot;unknown-external&quot;
-          </p>
+            );
+          })}
         </div>
+      </fieldset>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-black font-semibold text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? "Creating on ledger…" : "Create mandate"}
-        </button>
-      </form>
-    </div>
+      <button type="submit" disabled={submitting} className={buttonPrimary}>
+        {submitting ? <CircleNotch className="size-4 animate-spin" /> : <ShieldWarning className="size-4" />}
+        {submitting ? "Creating on ledger" : "Create mandate"}
+      </button>
+    </form>
   );
 }
-
-// ── Dashboard ──────────────────────────────────────────────────────────────────
 
 type ApprovalOutcome = {
   outcome: "executed" | "denied";
   denialCode: string | null;
+  explorerUrl: string;
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
-
-  const [treasury, setTreasury] = useState<{
-    balance: string;
-    currency: string;
-  } | null>(null);
-  const [mandate, setMandate] = useState<MandateView | null | undefined>(
-    undefined
-  ); // undefined=loading, null=no mandate
+  const [treasury, setTreasury] = useState<{ balance: string; currency: string } | null>(null);
+  const [mandate, setMandate] = useState<MandateView | null | undefined>(undefined);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-
+  const [failedResources, setFailedResources] = useState<string[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [approvalOutcomes, setApprovalOutcomes] = useState<
-    Map<string, ApprovalOutcome>
-  >(new Map());
+  const [approvalOutcomes, setApprovalOutcomes] = useState(new Map<string, ApprovalOutcome>());
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const fetchingRef = useRef(false);
+  const revokeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Role guard
   useEffect(() => {
     const role = getRole();
     if (role && role !== "cfo") router.replace("/");
   }, [router]);
 
   const fetchAll = useCallback(async () => {
-    const [tRes, aRes, appRes] = await Promise.allSettled([
-      apiFetch<{ balance: string; currency: string }>("/api/treasury"),
-      apiFetch<{ items: ActivityItem[] }>("/api/activity"),
-      apiFetch<{ items: ApprovalItem[] }>("/api/approvals"),
-    ]);
-
-    if (tRes.status === "fulfilled") setTreasury(tRes.value);
-    if (aRes.status === "fulfilled") setActivity(aRes.value.items);
-    if (appRes.status === "fulfilled") setApprovals(appRes.value.items);
-
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    const failures: string[] = [];
     try {
-      const m = await apiFetch<MandateView>("/api/mandate");
-      setMandate(m);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
-        setMandate(null);
-      }
-    }
+      const [treasuryResult, activityResult, approvalsResult, mandateResult] = await Promise.allSettled([
+        apiFetch<{ balance: string; currency: string }>("/api/treasury"),
+        apiFetch<{ items: ActivityItem[] }>("/api/activity"),
+        apiFetch<{ items: ApprovalItem[] }>("/api/approvals"),
+        apiFetch<MandateView>("/api/mandate"),
+      ]);
 
-    setDataLoading(false);
+      if (treasuryResult.status === "fulfilled") setTreasury(treasuryResult.value);
+      else failures.push("treasury");
+      if (activityResult.status === "fulfilled") setActivity(activityResult.value.items);
+      else failures.push("activity");
+      if (approvalsResult.status === "fulfilled") setApprovals(approvalsResult.value.items);
+      else failures.push("approvals");
+      if (mandateResult.status === "fulfilled") {
+        setMandate(mandateResult.value);
+      } else {
+        const message = mandateResult.reason instanceof Error ? mandateResult.reason.message : "";
+        if (message.includes("404") || message.toLowerCase().includes("not found")) setMandate(null);
+        else failures.push("mandate");
+      }
+      if (failures.length < 4) setLastUpdated(new Date());
+      setFailedResources(failures);
+    } finally {
+      fetchingRef.current = false;
+      setDataLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -385,53 +354,54 @@ export default function DashboardPage() {
     return () => clearInterval(id);
   }, [fetchAll]);
 
-  // Mandate actions
-  const mandateAction = async (
-    action: "pause" | "resume" | "revoke",
-    label: string
-  ) => {
+  useEffect(() => {
+    if (!showRevokeConfirm) return;
+    revokeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowRevokeConfirm(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showRevokeConfirm]);
+
+  const mandateAction = async (action: "pause" | "resume" | "revoke", pastTense: string) => {
     setActionLoading(action);
     try {
-      const m = await apiFetch<MandateView>(`/api/mandate/${action}`, {
-        method: "POST",
+      const nextMandate = await apiFetch<MandateView>(`/api/mandate/${action}`, { method: "POST" });
+      setMandate(nextMandate);
+      toast("success", `Mandate ${pastTense}`, {
+        label: "View on Canton Explorer",
+        href: nextMandate.explorerUrl,
       });
-      setMandate(m);
-      toast("success", `Mandate ${label}d`);
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : `Failed to ${label}`);
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : `Failed to ${action} mandate`);
     } finally {
       setActionLoading(null);
       setShowRevokeConfirm(false);
     }
   };
 
-  // Approval actions
   const handleApprove = async (pendingId: string) => {
     setActionLoading(`approve-${pendingId}`);
     try {
-      const res = await apiFetch<ApprovalOutcome>(
-        `/api/approvals/${pendingId}/approve`,
-        { method: "POST" }
-      );
-      setApprovalOutcomes((prev) => new Map(prev).set(pendingId, res));
-      if (res.outcome === "executed") {
-        toast("success", "Action approved and executed on ledger");
+      const result = await apiFetch<ApprovalOutcome>(`/api/approvals/${pendingId}/approve`, { method: "POST" });
+      setApprovalOutcomes((previous) => new Map(previous).set(pendingId, result));
+      const explorerLink = { label: "View on Canton Explorer", href: result.explorerUrl };
+      if (result.outcome === "executed") {
+        toast("success", "Action approved and executed on ledger", explorerLink);
       } else {
-        toast(
-          "warning",
-          `Approval denied on recheck: ${res.denialCode ?? "unknown"}`
-        );
+        toast("warning", `Approval denied on recheck: ${result.denialCode ?? "unknown"}`, explorerLink);
       }
       setTimeout(() => {
-        setApprovals((prev) => prev.filter((a) => a.pendingId !== pendingId));
-        setApprovalOutcomes((prev) => {
-          const next = new Map(prev);
+        setApprovals((previous) => previous.filter((item) => item.pendingId !== pendingId));
+        setApprovalOutcomes((previous) => {
+          const next = new Map(previous);
           next.delete(pendingId);
           return next;
         });
       }, 3500);
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to approve");
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : "Failed to approve action");
     } finally {
       setActionLoading(null);
     }
@@ -440,388 +410,321 @@ export default function DashboardPage() {
   const handleReject = async (pendingId: string) => {
     setActionLoading(`reject-${pendingId}`);
     try {
-      await apiFetch(`/api/approvals/${pendingId}/reject`, { method: "POST" });
-      toast("info", "Approval request rejected");
-      setApprovals((prev) => prev.filter((a) => a.pendingId !== pendingId));
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to reject");
+      const rejectResult = await apiFetch<{ ok: true; explorerUrl: string }>(
+        `/api/approvals/${pendingId}/reject`,
+        { method: "POST" }
+      );
+      toast("info", "Approval request rejected", {
+        label: "View on Canton Explorer",
+        href: rejectResult.explorerUrl,
+      });
+      setApprovals((previous) => previous.filter((item) => item.pendingId !== pendingId));
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : "Failed to reject action");
     } finally {
       setActionLoading(null);
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   if (dataLoading) {
     return (
-      <div className="space-y-4 animate-fade-in">
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+      <div aria-busy="true" aria-label="Loading treasury controls" className="space-y-6">
+        <Skeleton className="h-16 max-w-md" />
+        <div className="grid gap-4 md:grid-cols-[0.8fr_1.2fr]">
+          <Skeleton className="h-40" />
+          <Skeleton className="h-40" />
         </div>
-        <Skeleton className="h-48" />
-        <Skeleton className="h-64" />
+        <Skeleton className="h-56" />
       </div>
     );
   }
 
-  // No mandate — show create form
   if (mandate === null) {
     return (
-      <div className="animate-fade-in">
-        <div className="mb-6 flex items-center gap-3">
-          <div>
-            <p className="text-xs font-mono text-amber-500 uppercase tracking-wider mb-0.5">
-              CFO Dashboard
-            </p>
-            <h1 className="text-white font-bold text-xl">No active mandate</h1>
-          </div>
-        </div>
-        <div className="p-6 rounded-lg border border-amber-900/40 bg-amber-950/10">
-          <MandateForm onCreated={(m) => setMandate(m)} />
+      <div className="space-y-7 animate-fade-in">
+        <PageHeader
+          title="Treasury control"
+          description="No active mandate. Define the agent's exact authority before it can transact."
+        />
+        {failedResources.length > 0 && (
+          <InlineError message={`Could not refresh: ${failedResources.join(", ")}.`} onRetry={fetchAll} />
+        )}
+        <div className="rounded-panel border border-rim bg-surface p-5 sm:p-7">
+          <MandateForm onCreated={setMandate} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-mono text-amber-500 uppercase tracking-wider mb-0.5">
-            CFO Dashboard
-          </p>
-          <h1 className="text-white font-bold text-xl">Treasury Control</h1>
-        </div>
-        <div className="text-xs font-mono text-slate-600">
-          Auto-refresh · 5s
-        </div>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Treasury control"
+        description="Manage delegated authority, review human checkpoints, and inspect ledger outcomes."
+        action={
+          <div className="flex items-center gap-2 text-xs text-faint">
+            <ArrowClockwise className="size-4" />
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Awaiting refresh"}
+          </div>
+        }
+      />
 
-      {/* Row 1: Treasury + Mandate status */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Treasury balance */}
-        <div className="sm:col-span-1 p-5 rounded-lg border border-rim bg-surface">
-          <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">
-            Treasury Balance
-          </p>
-          {treasury ? (
-            <p className="text-3xl font-mono font-bold text-white tracking-tight">
-              {formatUSD(treasury.balance)}
-            </p>
-          ) : (
-            <Skeleton className="h-8 w-36" />
-          )}
-          <p className="text-xs text-slate-600 mt-1 font-mono">Demo USD · Canton ledger</p>
-        </div>
+      {failedResources.length > 0 && (
+        <InlineError
+          title="Some ledger data is unavailable"
+          message={`Could not refresh: ${failedResources.join(", ")}. Existing values may be stale.`}
+          onRetry={fetchAll}
+        />
+      )}
 
-        {/* Mandate card */}
-        {mandate && (
-          <div className="sm:col-span-2 p-5 rounded-lg border border-rim bg-surface">
-            <div className="flex items-start justify-between mb-4">
+      <div className="grid gap-4 lg:grid-cols-[0.78fr_1.22fr]">
+        <section className="rounded-panel border border-rim bg-surface p-5">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-muted">Treasury balance</p>
+            <Bank className="size-5 text-faint" />
+          </div>
+          <p className="mt-5 font-mono text-3xl font-semibold tracking-[-0.045em] text-ink">
+            {failedResources.includes("treasury") ? "-" : formatUSD(treasury?.balance)}
+          </p>
+          <p className="mt-2 text-xs text-faint">Demo USD on Canton ledger</p>
+        </section>
+
+        {mandate ? (
+          <section className="rounded-panel border border-rim bg-surface p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1">
-                  Agent Mandate
-                </p>
                 <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-ink">Agent mandate</h2>
                   <StatusBadge status={mandate.status} />
-                  <span className="text-[11px] font-mono text-slate-600">
-                    v{mandate.version}
-                  </span>
                 </div>
+                <p className="mt-2 font-mono text-xs text-faint">Version {mandate.version}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap gap-2">
                 {mandate.status === "Active" && (
                   <button
-                    onClick={() => mandateAction("pause", "pause")}
+                    type="button"
+                    onClick={() => mandateAction("pause", "paused")}
                     disabled={actionLoading !== null}
-                    className="px-3 py-1 text-xs bg-elevated hover:bg-rim border border-rim rounded-md text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+                    className={buttonSecondary}
                   >
-                    {actionLoading === "pause" ? "…" : "Pause"}
+                    {actionLoading === "pause" ? <CircleNotch className="size-4 animate-spin" /> : <Pause className="size-4" />}
+                    Pause
                   </button>
                 )}
                 {mandate.status === "Paused" && (
                   <button
-                    onClick={() => mandateAction("resume", "resume")}
+                    type="button"
+                    onClick={() => mandateAction("resume", "resumed")}
                     disabled={actionLoading !== null}
-                    className="px-3 py-1 text-xs bg-elevated hover:bg-rim border border-rim rounded-md text-emerald-400 hover:text-emerald-300 transition-colors disabled:opacity-50"
+                    className={buttonSecondary}
                   >
-                    {actionLoading === "resume" ? "…" : "Resume"}
+                    {actionLoading === "resume" ? <CircleNotch className="size-4 animate-spin" /> : <Play className="size-4" />}
+                    Resume
                   </button>
                 )}
                 {mandate.status !== "Revoked" && (
                   <button
+                    type="button"
                     onClick={() => setShowRevokeConfirm(true)}
                     disabled={actionLoading !== null}
-                    className="px-3 py-1 text-xs bg-red-950/40 hover:bg-red-950/70 border border-red-900/50 hover:border-red-700 rounded-md text-red-400 transition-colors disabled:opacity-50"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-control px-3 text-sm font-medium text-red-300 transition hover:bg-red-950/40 active:scale-[0.98] disabled:opacity-45"
                   >
+                    <XCircle className="size-4" />
                     Revoke
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Auto-approve below</span>
-                  <span className="font-mono text-slate-300">
-                    {formatUSD(mandate.autoApproveLimit)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Per-action max</span>
-                  <span className="font-mono text-slate-300">
-                    {formatUSD(mandate.perActionMaximum)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Expires</span>
-                  <span className="font-mono text-slate-400">
-                    {new Date(mandate.expiresAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </div>
+            <dl className="mt-5 grid gap-4 border-t border-rim pt-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs text-faint">Auto-approve below</dt>
+                <dd className="mt-1 font-mono text-sm text-ink">{formatUSD(mandate.autoApproveLimit)}</dd>
               </div>
-              <div className="text-xs space-y-1">
-                <div>
-                  <span className="text-slate-500">Categories</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {mandate.permittedCategories.map((c) => (
-                      <span
-                        key={c}
-                        className="px-1.5 py-0.5 rounded bg-elevated border border-rim text-slate-400 text-[10px] font-mono"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-500">Counterparties</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {mandate.counterparties.map((cp) => (
-                      <span
-                        key={cp.party}
-                        className="px-1.5 py-0.5 rounded bg-elevated border border-rim text-slate-400 text-[10px] font-mono"
-                      >
-                        {cp.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+              <div>
+                <dt className="text-xs text-faint">Per-action max</dt>
+                <dd className="mt-1 font-mono text-sm text-ink">{formatUSD(mandate.perActionMaximum)}</dd>
               </div>
-            </div>
-          </div>
+              <div>
+                <dt className="text-xs text-faint">Expires</dt>
+                <dd className="mt-1 font-mono text-sm text-ink">
+                  {new Date(mandate.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        ) : (
+          <InlineError message="Mandate data could not be loaded." onRetry={fetchAll} />
         )}
       </div>
 
-      {/* Row 2: Spending limits */}
       {mandate && (
-        <div className="p-5 rounded-lg border border-rim bg-surface">
-          <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-4">
-            Spending Limits
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <ProgressBar
-              spent={mandate.dailySpent}
-              max={mandate.dailyMaximum}
-              label="Daily"
-            />
-            <ProgressBar
-              spent={mandate.monthlySpent}
-              max={mandate.monthlyMaximum}
-              label="Monthly"
-            />
+        <Section title="Available authority" description="Current counters from the active mandate state.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <UsageMetric label="Daily authority" spent={mandate.dailySpent} maximum={mandate.dailyMaximum} />
+            <UsageMetric label="Monthly authority" spent={mandate.monthlySpent} maximum={mandate.monthlyMaximum} />
           </div>
-        </div>
+          <div className="mt-4 grid gap-4 border-t border-rim pt-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-medium text-muted">Permitted categories</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {mandate.permittedCategories.map((category) => (
+                  <span key={category} className="rounded-control border border-rim bg-elevated px-2.5 py-1 text-xs text-muted">{category}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted">Approved counterparties</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {mandate.counterparties.map((counterparty) => (
+                  <span key={counterparty.party} className="rounded-control border border-rim bg-elevated px-2.5 py-1 text-xs text-muted">{counterparty.label}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Section>
       )}
 
-      {/* Row 3: Pending approvals */}
-      {approvals.length > 0 && (
-        <div className="p-5 rounded-lg border border-amber-900/40 bg-amber-950/10">
-          <div className="flex items-center gap-2 mb-4">
-            <p className="text-xs font-mono text-amber-400 uppercase tracking-wider">
-              Pending Approvals
-            </p>
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-900/60 text-amber-300 text-[10px] font-mono">
-              {approvals.length}
-            </span>
-          </div>
+      {!failedResources.includes("approvals") && approvals.length > 0 && (
+        <Section
+          title="Needs human approval"
+          description={`${approvals.length} request${approvals.length === 1 ? "" : "s"} exceeded automatic authority.`}
+          className="border-amber-900/60"
+        >
           <div className="space-y-3">
             {approvals.map((item) => {
               const outcome = approvalOutcomes.get(item.pendingId);
-              const isLoading =
-                actionLoading === `approve-${item.pendingId}` ||
-                actionLoading === `reject-${item.pendingId}`;
-
+              const isLoading = actionLoading === `approve-${item.pendingId}` || actionLoading === `reject-${item.pendingId}`;
               return (
-                <div
-                  key={item.pendingId}
-                  className="p-4 rounded-lg border border-rim bg-surface"
-                >
+                <article key={item.pendingId} className="rounded-control border border-rim bg-elevated p-4">
                   {outcome ? (
-                    <div
-                      className={`text-sm font-medium ${
-                        outcome.outcome === "executed"
-                          ? "text-emerald-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {outcome.outcome === "executed"
-                        ? "✓ Executed on ledger"
-                        : `✕ Denied on recheck: ${outcome.denialCode}`}
-                      {outcome.denialCode && (
-                        <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                          {DENIAL_EXPLANATIONS[outcome.denialCode] ??
-                            outcome.denialCode}
-                        </p>
+                    <div className="flex gap-3">
+                      {outcome.outcome === "executed" ? (
+                        <CheckCircle className="size-5 shrink-0 text-emerald-400" weight="fill" />
+                      ) : (
+                        <ShieldWarning className="size-5 shrink-0 text-red-400" weight="fill" />
                       )}
+                      <div>
+                        <p className="text-sm font-medium text-ink">
+                          {outcome.outcome === "executed" ? "Executed on ledger" : `Denied on recheck: ${outcome.denialCode}`}
+                        </p>
+                        {outcome.denialCode && (
+                          <p className="mt-1 text-xs text-muted">{DENIAL_EXPLANATIONS[outcome.denialCode] ?? outcome.denialCode}</p>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-white font-semibold text-sm">
-                            {formatUSD(item.amount)}{" "}
-                          </span>
-                          <span className="text-slate-400 text-sm">
-                            → {item.counterpartyLabel}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-elevated border border-rim text-slate-500 text-[10px] font-mono">
-                            {item.category}
-                          </span>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-mono text-base font-semibold text-ink">{formatUSD(item.amount)}</span>
+                          <ArrowRight className="size-4 text-faint" />
+                          <span className="text-sm text-muted">{item.counterpartyLabel}</span>
+                          <span className="rounded-md border border-rim px-2 py-0.5 text-[11px] text-faint">{item.category}</span>
                         </div>
-                        <p className="text-xs text-slate-500 truncate">
-                          {item.purpose}
-                        </p>
-                        <p className="text-[11px] font-mono text-slate-600 mt-0.5">
-                          {formatDate(item.createdAt)} ·{" "}
-                          {item.requestId.slice(0, 12)}…
-                        </p>
+                        <p className="mt-1 truncate text-xs text-muted">{item.purpose}</p>
+                        <p className="mt-1 font-mono text-[11px] text-faint">{formatDate(item.createdAt)} | {item.requestId.slice(0, 12)}</p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => handleReject(item.pendingId)}
-                          disabled={isLoading || actionLoading !== null}
-                          className="px-3 py-1.5 text-xs border border-rim rounded-md text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors disabled:opacity-40"
-                        >
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" onClick={() => handleReject(item.pendingId)} disabled={isLoading || actionLoading !== null} className={buttonGhost}>
                           Reject
                         </button>
-                        <button
-                          onClick={() => handleApprove(item.pendingId)}
-                          disabled={isLoading || actionLoading !== null}
-                          className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 text-black font-semibold rounded-md transition-colors disabled:opacity-40"
-                        >
-                          {isLoading ? "…" : "Approve"}
+                        <button type="button" onClick={() => handleApprove(item.pendingId)} disabled={isLoading || actionLoading !== null} className={buttonPrimary}>
+                          {isLoading && <CircleNotch className="size-4 animate-spin" />}
+                          Approve
                         </button>
                       </div>
                     </div>
                   )}
-                </div>
+                </article>
               );
             })}
           </div>
-        </div>
+        </Section>
       )}
 
-      {/* Row 3b: Revoked — offer a fresh mandate. Revocation is terminal (no
-          un-revoke choice by design), so this is the only way forward. */}
       {mandate?.status === "Revoked" && (
-        <div className="p-6 rounded-lg border border-amber-900/40 bg-amber-950/10">
-          <MandateForm onCreated={(m) => setMandate(m)} />
+        <div className="rounded-panel border border-rim bg-surface p-5 sm:p-7">
+          <MandateForm onCreated={setMandate} />
         </div>
       )}
 
-      {/* Row 4: Activity feed */}
-      <div className="p-5 rounded-lg border border-rim bg-surface">
-        <p className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-4">
-          Activity Feed
-        </p>
-        {activity.length === 0 ? (
-          <p className="text-slate-600 text-sm text-center py-8">
-            No activity yet — send the AI agent a message to get started.
-          </p>
+      <Section title="Ledger activity" description="Receipts, policy outcomes, and mandate state changes.">
+        {failedResources.includes("activity") ? (
+          <InlineError message="Activity could not be refreshed." onRetry={fetchAll} />
+        ) : activity.length === 0 ? (
+          <EmptyState
+            icon={<Receipt className="size-5" />}
+            title="No activity yet"
+            description="Agent requests and mandate changes will appear here after ledger confirmation."
+          />
         ) : (
-          <div className="space-y-2">
-            {activity.map((item, i) => (
-              <div
-                key={`${item.requestId}-${i}`}
-                className="flex items-start gap-3 py-2.5 border-b border-rim last:border-0"
+          <div>
+            {activity.map((item, index) => (
+              <article
+                key={`${item.requestId}-${index}`}
+                className={`grid gap-3 py-3 sm:grid-cols-[1fr_auto] sm:items-center ${index < activity.length - 1 ? "border-b border-rim" : ""}`}
               >
-                <ActivityTypeIcon type={item.type} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {item.amount && (
-                      <span className="font-mono text-sm text-white font-medium">
-                        {formatUSD(item.amount)}
-                      </span>
-                    )}
-                    {item.counterpartyLabel && (
-                      <span className="text-slate-400 text-sm">
-                        {item.counterpartyLabel}
-                      </span>
-                    )}
-                    {item.category && (
-                      <span className="px-1.5 py-0.5 rounded bg-elevated border border-rim text-slate-500 text-[10px] font-mono">
-                        {item.category}
-                      </span>
-                    )}
-                    {item.code && (
-                      <span className="px-1.5 py-0.5 rounded bg-red-950/40 border border-red-900/50 text-red-400 text-[10px] font-mono">
-                        {item.code}
-                      </span>
-                    )}
+                <div className="flex min-w-0 gap-3">
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-control bg-elevated">
+                    <ActivityIcon type={item.type} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {item.amount && <span className="font-mono text-sm font-medium text-ink">{formatUSD(item.amount)}</span>}
+                      {item.counterpartyLabel && <span className="text-sm text-muted">{item.counterpartyLabel}</span>}
+                      {(item.code || item.category) && (
+                        <span className="rounded-md border border-rim px-2 py-0.5 font-mono text-[10px] text-faint">{item.code ?? item.category}</span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-xs text-muted">{item.detail}</p>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">
-                    {item.detail}
-                  </p>
                 </div>
-                <span className="text-[11px] font-mono text-slate-600 shrink-0">
-                  {new Date(item.at).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
+                <time className="pl-11 font-mono text-[11px] text-faint sm:pl-0">
+                  {new Date(item.at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                </time>
+              </article>
             ))}
           </div>
         )}
-      </div>
+      </Section>
 
-      {/* Revoke confirm modal */}
       {showRevokeConfirm && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setShowRevokeConfirm(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/85 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowRevokeConfirm(false);
+          }}
         >
           <div
-            className="bg-surface border border-red-900/60 rounded-xl p-6 max-w-sm w-full shadow-2xl animate-slide-in"
-            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="revoke-title"
+            aria-describedby="revoke-description"
+            className="w-full max-w-md rounded-panel border border-red-900/70 bg-surface p-6 panel-shadow animate-slide-in"
           >
-            <h3 className="text-white font-semibold mb-2">Revoke mandate?</h3>
-            <p className="text-slate-400 text-sm mb-5 leading-relaxed">
-              The agent immediately loses all financial authority. Pending
-              approvals will be blocked. The mandate cannot be reactivated —
-              a new one must be created.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowRevokeConfirm(false)}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-              >
-                Cancel
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="revoke-title" className="text-lg font-semibold text-ink">Revoke mandate?</h2>
+                <p id="revoke-description" className="mt-2 text-sm leading-6 text-muted">
+                  Agent authority ends immediately. Pending approvals cannot execute. This mandate cannot be restored.
+                </p>
+              </div>
+              <button type="button" aria-label="Close dialog" onClick={() => setShowRevokeConfirm(false)} className="flex size-9 shrink-0 items-center justify-center rounded-control text-muted hover:bg-elevated hover:text-ink">
+                <X className="size-4" />
               </button>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowRevokeConfirm(false)} className={buttonGhost}>Cancel</button>
               <button
-                onClick={() => mandateAction("revoke", "revoke")}
+                ref={revokeButtonRef}
+                type="button"
+                onClick={() => mandateAction("revoke", "revoked")}
                 disabled={actionLoading !== null}
-                className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50 font-medium"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-control bg-red-700 px-4 text-sm font-semibold text-white transition hover:bg-red-600 active:scale-[0.98] disabled:opacity-50"
               >
-                {actionLoading === "revoke" ? "Revoking…" : "Revoke mandate"}
+                {actionLoading === "revoke" ? <CircleNotch className="size-4 animate-spin" /> : <Warning className="size-4" weight="fill" />}
+                Revoke mandate
               </button>
             </div>
           </div>

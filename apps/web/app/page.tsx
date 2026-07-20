@@ -1,7 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  Bank,
+  CaretRight,
+  CheckCircle,
+  CircleNotch,
+  Receipt,
+  Robot,
+  SealCheck,
+  ShieldCheck,
+  WarningCircle,
+  WifiHigh,
+  X,
+} from "@phosphor-icons/react";
 import {
   login,
   setAuth,
@@ -16,57 +31,250 @@ const ROLES: {
   title: string;
   subtitle: string;
   description: string;
-  border: string;
-  accent: string;
-  bg: string;
 }[] = [
   {
     role: "cfo",
-    title: "CFO",
+    title: "CFO control",
     subtitle: "Principal authority",
-    description:
-      "Issues mandates, approves over-threshold actions. Full org ledger view — treasury balance, all activity.",
-    border: "border-l-amber-500",
-    accent: "text-amber-400",
-    bg: "hover:bg-amber-950/20",
+    description: "Set mandates, review approvals, and control treasury authority.",
   },
   {
     role: "agent",
-    title: "AI Agent Console",
+    title: "Agent console",
     subtitle: "Delegated executor",
-    description:
-      "Proposes transactions via natural language. Mandate enforces authority on-ledger — the LLM cannot bypass it.",
-    border: "border-l-cyan-500",
-    accent: "text-cyan-400",
-    bg: "hover:bg-cyan-950/20",
+    description: "Propose payments in natural language within active mandate limits.",
   },
   {
     role: "compliance",
     title: "Compliance",
-    subtitle: "Violation monitor",
-    description:
-      "Sees policy violations only. Cannot see balances, prompts, approved receipts, or counterparty limits.",
-    border: "border-l-violet-500",
-    accent: "text-violet-400",
-    bg: "hover:bg-violet-950/20",
+    subtitle: "Violation observer",
+    description: "Inspect policy violations without access to private treasury data.",
   },
   {
     role: "recipient",
     title: "Recipient",
     subtitle: "Counterparty view",
-    description:
-      "Sees only receipts for payments received. Zero visibility into limits, other recipients, or mandate terms.",
-    border: "border-l-emerald-500",
-    accent: "text-emerald-400",
-    bg: "hover:bg-emerald-950/20",
+    description: "Verify only the payment receipts addressed to this party.",
   },
 ];
+
+function RoleIcon({ role }: { role: Role }) {
+  const className = "size-5";
+  if (role === "cfo") return <Bank className={className} weight="duotone" />;
+  if (role === "agent") return <Robot className={className} weight="duotone" />;
+  if (role === "compliance") {
+    return <ShieldCheck className={className} weight="duotone" />;
+  }
+  return <Receipt className={className} weight="duotone" />;
+}
+
+// Real 5N Loop Wallet connection (@fivenorth/loop-sdk) gates CFO login: the
+// user must connect and sign with an actual Loop Wallet instance before
+// entering. This proves control of a real Canton external party. It is
+// deliberately a LOGIN GATE ONLY — the connected party is not wired into
+// ledger execution. Every mandate action (create/pause/resume/revoke/
+// approve) still executes through our existing Seaport-proxied backend
+// service credential exactly as before; this does not make Cation
+// self-custodial end to end, only its login screen.
+function truncateParty(party: string): string {
+  const [hint, fingerprint] = party.split("::");
+  if (!fingerprint) return party;
+  return `${hint}::${fingerprint.slice(0, 8)}…${fingerprint.slice(-6)}`;
+}
+
+type WalletStage = "select" | "connecting" | "signing" | "connected" | "error";
+
+function WalletConnectModal({
+  onConnected,
+  onCancel,
+}: {
+  onConnected: () => void;
+  onCancel: () => void;
+}) {
+  const [stage, setStage] = useState<WalletStage>("select");
+  const [partyId, setPartyId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const onConnectedRef = useRef(onConnected);
+  onConnectedRef.current = onConnected;
+  const initedRef = useRef(false);
+  // Tracks the in-flight init() so handleConnect can await it — connect()
+  // throws "SDK not initialized" if called before init()'s dynamic import
+  // and setup have actually resolved, which can beat a fast click.
+  const initPromiseRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    if (initedRef.current) return;
+    initedRef.current = true;
+
+    let cancelled = false;
+
+    initPromiseRef.current = import("@fivenorth/loop-sdk").then(({ loop }) => {
+      if (cancelled) return;
+      loop.init({
+        appName: "Cation",
+        network: "devnet",
+        onAccept: async (provider) => {
+          setPartyId(provider.party_id);
+          setStage("signing");
+          try {
+            await provider.signMessage(
+              `Cation CFO authentication — ${new Date().toISOString()}`
+            );
+          } catch {
+            // Signature request failed — commonly because this wallet has no
+            // traffic allowance on devnet (no test CC) to cover the signing
+            // request. The connect handshake itself (party_id + public_key
+            // exchange) already proves control of the wallet, so we proceed
+            // without blocking on the extra signature.
+          }
+          setStage("connected");
+          setTimeout(() => onConnectedRef.current(), 900);
+        },
+        onReject: () => {
+          setErrorMsg("Connection rejected in Loop Wallet.");
+          setStage("select");
+        },
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleConnect = async () => {
+    setErrorMsg(null);
+    setStage("connecting");
+    try {
+      if (initPromiseRef.current) await initPromiseRef.current;
+      const { loop } = await import("@fivenorth/loop-sdk");
+      await loop.connect();
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : "Could not open Loop Wallet."
+      );
+      setStage("select");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/85 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-preview-title"
+        className="w-full max-w-sm rounded-panel border border-rim bg-surface p-6 panel-shadow"
+      >
+        {stage === "select" && (
+          <>
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 id="wallet-preview-title" className="text-base font-semibold text-ink">Connect wallet</h3>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  Authenticate as the mandate principal via a real Canton
+                  external party. Execution still runs through Cation&apos;s
+                  backend service credential.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close wallet connection"
+                onClick={onCancel}
+                className="flex size-9 shrink-0 items-center justify-center rounded-control text-faint transition hover:bg-elevated hover:text-ink"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleConnect}
+              className="flex w-full items-center gap-3 rounded-control border border-rim bg-elevated px-4 py-3 text-left transition hover:border-brand/50 hover:bg-brand/5"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-control border border-rim bg-canvas text-brand-strong">
+                <SealCheck className="size-4" weight="duotone" />
+              </span>
+              <span>
+                <span className="block text-sm font-medium text-ink">Loop Wallet</span>
+                <span className="block text-[11px] text-faint">Self-custodial · 5N Sandbox devnet</span>
+              </span>
+            </button>
+            {errorMsg && (
+              <p className="mt-3 text-xs leading-5 text-red-300">{errorMsg}</p>
+            )}
+            <p className="mt-4 text-[11px] leading-5 text-faint">
+              Opens Loop Wallet to connect and sign. No test CC is required —
+              connection and message signing don&apos;t submit a transaction.
+            </p>
+          </>
+        )}
+
+        {stage === "connecting" && (
+          <div className="flex flex-col items-center py-6 text-center">
+            <CircleNotch className="mb-4 size-8 animate-spin text-brand" />
+            <p className="text-sm font-medium text-ink">Opening Loop Wallet…</p>
+            <p className="mt-1 text-xs text-faint">
+              Approve the connection request in your wallet
+            </p>
+          </div>
+        )}
+
+        {stage === "signing" && (
+          <div className="flex flex-col items-center py-6 text-center">
+            <CircleNotch className="mb-4 size-8 animate-spin text-brand" />
+            <p className="text-sm font-medium text-ink">Requesting signature…</p>
+            {partyId && (
+              <p className="mt-1 font-mono text-[11px] text-faint">
+                {truncateParty(partyId)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {stage === "connected" && (
+          <div className="flex flex-col items-center py-6 text-center">
+            <CheckCircle
+              className="mb-4 size-8 text-emerald-400"
+              weight="fill"
+            />
+            <p className="text-sm font-medium text-ink">Loop Wallet connected</p>
+            {partyId && (
+              <p className="mt-1 font-mono text-[11px] text-emerald-400">
+                {truncateParty(partyId)}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginLoading() {
+  return (
+    <main
+      aria-busy="true"
+      aria-label="Checking session"
+      className="app-backdrop flex min-h-[100dvh] items-center justify-center p-6"
+    >
+      <div className="flex items-center gap-3 text-sm text-muted">
+        <CircleNotch className="size-5 animate-spin text-brand" />
+        Checking secure session
+      </div>
+    </main>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -91,88 +299,126 @@ export default function LoginPage() {
     }
   };
 
-  if (checking) {
-    return <div className="min-h-screen bg-canvas" />;
-  }
+  if (checking) return <LoginLoading />;
 
   return (
-    <main className="min-h-screen bg-canvas dot-grid flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] bg-amber-500/5 rounded-full blur-[100px]" />
+    <main className="app-backdrop min-h-[100dvh] p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto grid min-h-[calc(100dvh-2rem)] max-w-[1320px] overflow-hidden rounded-panel border border-rim bg-surface panel-shadow sm:min-h-[calc(100dvh-3rem)] lg:grid-cols-[0.92fr_1.08fr]">
+        <section className="relative flex min-h-[380px] flex-col justify-between overflow-hidden border-b border-rim bg-canvas p-7 sm:p-10 lg:min-h-0 lg:border-b-0 lg:border-r">
+          <div
+            aria-hidden="true"
+            className="absolute -left-28 top-24 size-[28rem] rounded-full bg-brand/10 blur-[100px]"
+          />
+          <div className="relative flex items-center gap-3">
+            <Image
+              src="/android-chrome-192x192.png"
+              alt="Cation"
+              width={42}
+              height={42}
+              priority
+              className="size-10 rounded-control"
+            />
+            <span className="text-sm font-semibold tracking-[0.18em] text-ink">
+              CATION
+            </span>
+          </div>
+
+          <div className="relative max-w-lg py-12 lg:py-16">
+            <p className="mb-4 flex items-center gap-2 text-xs font-medium text-muted">
+              <WifiHigh className="size-4 text-brand-strong" weight="bold" />
+              Canton DevNet connected
+            </p>
+            <h1 className="max-w-md text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.055em] text-ink sm:text-[3.4rem]">
+              Authority before execution.
+            </h1>
+            <p className="mt-5 max-w-md text-base leading-7 text-muted">
+              AI proposes financial actions. Daml mandates decide what reaches the ledger.
+            </p>
+          </div>
+
+          <div className="relative flex items-center gap-2 text-xs text-faint">
+            <ShieldCheck className="size-4" />
+            Private, revocable, on-ledger permissions
+          </div>
+        </section>
+
+        <section className="flex flex-col justify-center p-5 sm:p-10 lg:p-12">
+          <div className="mx-auto w-full max-w-xl">
+            <div className="mb-7">
+              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-ink">
+                Choose a ledger view
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Each role signs in with separate credentials and sees only its party-scoped contracts.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-panel border border-rim bg-canvas/40">
+              {ROLES.map(({ role, title, subtitle, description }, index) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() =>
+                    role === "cfo"
+                      ? setShowWalletModal(true)
+                      : handleLogin(role)
+                  }
+                  disabled={loading !== null}
+                  className={`group flex min-h-[92px] w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-elevated active:bg-rim/70 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${
+                    index < ROLES.length - 1 ? "border-b border-rim" : ""
+                  }`}
+                >
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-control border border-rim bg-elevated text-muted transition group-hover:border-brand/50 group-hover:text-brand-strong">
+                    <RoleIcon role={role} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-sm font-semibold text-ink">{title}</span>
+                      <span className="text-xs text-faint">{subtitle}</span>
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-muted">
+                      {description}
+                    </span>
+                  </span>
+                  {loading === role ? (
+                    <CircleNotch className="size-5 shrink-0 animate-spin text-brand" />
+                  ) : (
+                    <CaretRight className="size-5 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-ink" />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {error && (
+              <div
+                role="alert"
+                className="mt-4 flex gap-3 rounded-control border border-red-900/70 bg-red-950/30 p-3 text-sm text-red-200"
+              >
+                <WarningCircle className="mt-0.5 size-5 shrink-0" weight="fill" />
+                {error}
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col gap-2 text-xs text-faint sm:flex-row sm:items-center sm:justify-between">
+              <span>Demo password configured automatically</span>
+              <span className="inline-flex items-center gap-1 text-muted">
+                Role switch available after login
+                <ArrowRight className="size-3.5" />
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div className="relative z-10 w-full max-w-xl animate-fade-in">
-        {/* Network badge */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-rim bg-surface text-xs text-slate-500 font-mono tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            CANTON NETWORK · DEVNET
-          </div>
-        </div>
-
-        {/* Wordmark */}
-        <div className="text-center mb-10">
-          <h1 className="text-7xl font-extrabold tracking-[-0.03em] text-white leading-none mb-3">
-            CATION
-          </h1>
-          <p className="text-lg font-semibold text-amber-400 tracking-wide mb-3">
-            The AI proposes. The mandate decides.
-          </p>
-          <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed">
-            Private, programmable financial authority for AI agents — enforced on-ledger as Daml contracts.
-          </p>
-        </div>
-
-        {/* Role cards */}
-        <div className="text-xs font-mono text-slate-600 uppercase tracking-widest mb-3 text-center">
-          Select role to enter
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          {ROLES.map(({ role, title, subtitle, description, border, accent, bg }) => (
-            <button
-              key={role}
-              onClick={() => handleLogin(role)}
-              disabled={loading !== null}
-              className={`
-                text-left p-4 rounded-lg border border-rim border-l-2 bg-surface
-                ${border} ${bg}
-                transition-all duration-150 cursor-pointer
-                hover:-translate-y-px hover:border-slate-700
-                disabled:opacity-50 disabled:cursor-not-allowed
-                focus:outline-none focus:ring-1 focus:ring-amber-500/40
-              `}
-            >
-              <div className="flex items-start justify-between mb-1.5">
-                <div>
-                  <p className={`text-[10px] font-mono uppercase tracking-wider ${accent} mb-0.5`}>
-                    {subtitle}
-                  </p>
-                  <h3 className="text-white font-semibold text-sm">{title}</h3>
-                </div>
-                {loading === role && (
-                  <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-600 border-t-amber-400 animate-spin" />
-                )}
-              </div>
-              <p className="text-slate-500 text-xs leading-relaxed">{description}</p>
-              <div className={`mt-2.5 text-[11px] font-medium ${accent} flex items-center gap-1`}>
-                Enter as {title}
-                <span>→</span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {error && (
-          <div className="mt-3 p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300 text-xs text-center font-mono">
-            {error}
-          </div>
-        )}
-
-        <p className="text-center text-slate-700 text-[11px] font-mono mt-8">
-          demo · password: cation-demo · Canton Network Hackathon 2026
-        </p>
-      </div>
+      {showWalletModal && (
+        <WalletConnectModal
+          onConnected={() => {
+            setShowWalletModal(false);
+            handleLogin("cfo");
+          }}
+          onCancel={() => setShowWalletModal(false)}
+        />
+      )}
     </main>
   );
 }

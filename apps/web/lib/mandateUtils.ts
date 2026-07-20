@@ -6,6 +6,7 @@
 
 import { queryAcs, tid, type AcsEntry } from "./ledger";
 import { partyToLabel } from "./partyMap";
+import { explorerPartyUrl } from "./explorer";
 
 export interface MandateView {
   mandateId: string;
@@ -21,6 +22,7 @@ export interface MandateView {
   permittedCategories: string[];
   counterparties: { party: string; label: string }[];
   version: number;
+  explorerUrl: string;
   // Internal — needed for ledger operations, not returned to client.
   _stateCid: string;
   _termsCid: string;
@@ -104,6 +106,7 @@ export async function getMandateView(
       label: partyToLabel(p),
     })),
     version: Number(s["version"] ?? 1),
+    explorerUrl: explorerPartyUrl(party),
     _stateCid: stateEntry.contractId,
     _termsCid: termsEntry.contractId,
   };

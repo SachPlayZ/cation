@@ -3,40 +3,102 @@
 @tailwind utilities;
 
 :root {
-  --font-syne: "Syne", system-ui, sans-serif;
-  --font-jb-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+  --canvas: 10 11 14;
+  --surface: 16 18 22;
+  --elevated: 22 24 29;
+  --rim: 43 46 54;
+  --rim-strong: 67 71 82;
+  --ink: 242 242 239;
+  --muted: 172 175 184;
+  --faint: 114 118 130;
+  --brand: 239 46 63;
+  --brand-strong: 255 73 88;
+  --brand-soft: 64 20 27;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  background: rgb(var(--canvas));
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--brand-strong));
+  outline-offset: 3px;
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f1117;
+  background: rgb(var(--canvas));
 }
 ::-webkit-scrollbar-thumb {
-  background: #1c2030;
-  border-radius: 3px;
+  background: rgb(var(--rim));
+  border: 2px solid rgb(var(--canvas));
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3048;
+  background: rgb(var(--rim-strong));
 }
 
 ::selection {
-  background: rgba(245, 158, 11, 0.25);
+  background: rgb(var(--brand) / 0.28);
   color: inherit;
 }
 
-/* Dot-grid background utility */
-.dot-grid {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(255, 255, 255, 0.035) 1px,
-    transparent 0
+.app-backdrop {
+  background:
+    radial-gradient(circle at 10% 0%, rgb(var(--brand) / 0.055), transparent 28rem),
+    rgb(var(--canvas));
+}
+
+.panel-shadow {
+  box-shadow: 0 24px 72px rgb(0 0 0 / 0.22);
+}
+
+.skeleton-sheen {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--elevated)) 0%,
+    rgb(var(--rim) / 0.7) 50%,
+    rgb(var(--elevated)) 100%
   );
-  background-size: 28px 28px;
+  background-size: 200% 100%;
+  animation: skeleton-shift 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-shift {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

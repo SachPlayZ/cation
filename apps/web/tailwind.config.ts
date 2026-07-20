@@ -9,25 +9,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        canvas: "#090b0f",
-        surface: "#0f1117",
-        elevated: "#141720",
-        rim: "#1c2030",
-        brand: "#f59e0b",
+        canvas: "rgb(var(--canvas) / <alpha-value>)",
+        surface: "rgb(var(--surface) / <alpha-value>)",
+        elevated: "rgb(var(--elevated) / <alpha-value>)",
+        rim: "rgb(var(--rim) / <alpha-value>)",
+        "rim-strong": "rgb(var(--rim-strong) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        faint: "rgb(var(--faint) / <alpha-value>)",
+        brand: "rgb(var(--brand) / <alpha-value>)",
+        "brand-strong": "rgb(var(--brand-strong) / <alpha-value>)",
+        "brand-soft": "rgb(var(--brand-soft) / <alpha-value>)",
       },
       fontFamily: {
-        sans: ["var(--font-syne)", "system-ui", "sans-serif"],
-        mono: ["var(--font-jb-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-geist)", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+      },
+      borderRadius: {
+        control: "10px",
+        panel: "14px",
       },
       animation: {
-        "slide-in": "slideIn 0.2s ease-out forwards",
-        "fade-in": "fadeIn 0.35s ease-out forwards",
-        skeleton: "skeleton 1.5s ease-in-out infinite",
-        "spin-slow": "spin 2s linear infinite",
+        "slide-in": "slideIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "fade-in": "fadeIn 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        skeleton: "skeleton 1.6s ease-in-out infinite",
       },
       keyframes: {
         slideIn: {
-          "0%": { opacity: "0", transform: "translateY(-8px)" },
+          "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
         fadeIn: {

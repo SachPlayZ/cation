@@ -160,8 +160,12 @@ export async function createContract(
   opts: SubmitOpts
 ): Promise<SubmitResult> {
   if (isSeaportEnabled()) {
-    await seaportCreateContract(templateId, createArguments, opts.actAs[0]);
-    return { updateId: "", completionOffset: 0 };
+    const { updateId } = await seaportCreateContract(
+      templateId,
+      createArguments,
+      opts.actAs[0]
+    );
+    return { updateId: updateId ?? "", completionOffset: 0 };
   }
   return submitAndWait(
     [{ CreateCommand: { templateId, createArguments } }],
