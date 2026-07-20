@@ -48,7 +48,7 @@ export default function LandingPage() {
   return (
     <LandingMotion>
     <main className="landing-shell w-full max-w-full overflow-x-hidden bg-canvas text-ink">
-      <header className="relative z-30 border-b border-rim/70 bg-canvas/80 backdrop-blur-xl">
+      <header className="absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-canvas/90 to-transparent">
         <nav
           aria-label="Primary navigation"
           className="mx-auto flex h-[72px] max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-10"
@@ -87,42 +87,15 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <section className="relative mx-auto grid min-h-[calc(100dvh-72px)] max-w-[1400px] items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-10 lg:py-20">
-        <div className="motion-hero-copy relative z-10 max-w-2xl">
-          <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-strong">
-            Private authority for agentic finance
-          </p>
-          <h1 className="max-w-5xl text-[3.7rem] font-semibold leading-[0.94] tracking-[-0.065em] text-ink sm:text-[5.2rem] lg:text-[6.5rem]">
-            Boundaries that hold.
-          </h1>
-          <p className="mt-7 max-w-xl text-base leading-7 text-muted sm:text-lg">
-            Cation turns financial permissions into revocable Daml mandates enforced before every ledger action.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="/login"
-              className="group inline-flex items-center gap-2 whitespace-nowrap rounded-control bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-strong active:translate-y-px"
-            >
-              Explore role views
-              <ArrowRight className="size-4 transition group-hover:translate-x-0.5" weight="bold" />
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-control border border-rim-strong bg-surface/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-muted hover:bg-elevated active:translate-y-px"
-            >
-              See how it works
-            </a>
-          </div>
-        </div>
-
-        <div className="motion-hero-visual group relative min-h-[440px] overflow-hidden rounded-panel border border-rim bg-surface panel-shadow sm:min-h-[560px] lg:min-h-[640px]">
+      <section className="relative isolate min-h-[100dvh] overflow-hidden border-b border-rim">
+        <div className="motion-hero-visual absolute inset-0 -z-20">
           <Image
             src="/landing/authority-gate.png"
             alt="A signal-red path passing through a precise mechanical authorization gate"
             fill
             priority
-            sizes="(max-width: 1024px) 100vw, 56vw"
-            className="object-cover object-[58%_center] transition-transform duration-700 ease-out group-hover:scale-[1.025]"
+            sizes="100vw"
+            className="object-cover object-[57%_center]"
           />
           <video
             autoPlay
@@ -134,19 +107,39 @@ export default function LandingPage() {
             poster="/landing/authority-gate.png"
             aria-hidden="true"
             tabIndex={-1}
-            className="hero-gate-video absolute inset-0 size-full object-cover object-[58%_center] transition-transform duration-700 ease-out group-hover:scale-[1.025]"
+            className="hero-gate-video absolute inset-0 size-full object-cover object-[57%_center]"
           >
             <source src="/landing/authority-gate-loop.mp4" type="video/mp4" />
           </video>
-          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 bg-gradient-to-t from-canvas via-canvas/85 to-transparent p-5 pt-24 sm:p-7 sm:pt-28">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-faint">Decision path</p>
-              <p className="mt-1 text-sm font-medium text-ink">Propose. Evaluate. Commit.</p>
+        </div>
+        <div className="hero-gate-scrim absolute inset-0 -z-10" aria-hidden="true" />
+
+        <div className="mx-auto flex min-h-[100dvh] max-w-[1400px] items-center px-4 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:px-10 lg:pb-24 lg:pt-36">
+          <div className="motion-hero-copy relative z-10 max-w-2xl">
+            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-strong">
+              Private authority for agentic finance
+            </p>
+            <h1 className="max-w-5xl text-[3.7rem] font-semibold leading-[0.94] tracking-[-0.065em] text-ink sm:text-[5.2rem] lg:text-[6.5rem]">
+              Boundaries that hold.
+            </h1>
+            <p className="mt-7 max-w-xl text-base leading-7 text-muted sm:text-lg">
+              Cation turns financial permissions into revocable Daml mandates enforced before every ledger action.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/login"
+                className="group inline-flex items-center gap-2 whitespace-nowrap rounded-control bg-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-strong active:translate-y-px"
+              >
+                Explore role views
+                <ArrowRight className="size-4 transition group-hover:translate-x-0.5" weight="bold" />
+              </Link>
+              <a
+                href="#how-it-works"
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-control border border-rim-strong bg-canvas/65 px-5 py-3 text-sm font-semibold text-ink backdrop-blur-md transition hover:border-muted hover:bg-elevated/90 active:translate-y-px"
+              >
+                See how it works
+              </a>
             </div>
-            <span className="inline-flex items-center gap-2 text-xs font-medium text-muted">
-              <SealCheck className="size-5 text-brand-strong" weight="duotone" />
-              Canton DevNet
-            </span>
           </div>
         </div>
       </section>

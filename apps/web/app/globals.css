@@ -90,6 +90,20 @@ button,
   pointer-events: none;
 }
 
+.hero-gate-scrim {
+  background:
+    linear-gradient(90deg, rgb(var(--canvas) / 0.96) 0%, rgb(var(--canvas) / 0.78) 35%, rgb(var(--canvas) / 0.08) 72%),
+    linear-gradient(0deg, rgb(var(--canvas) / 0.58) 0%, transparent 38%, rgb(var(--canvas) / 0.2) 100%);
+}
+
+@media (max-width: 639px) {
+  .hero-gate-scrim {
+    background:
+      linear-gradient(90deg, rgb(var(--canvas) / 0.94) 0%, rgb(var(--canvas) / 0.66) 76%, rgb(var(--canvas) / 0.34) 100%),
+      linear-gradient(0deg, rgb(var(--canvas) / 0.72) 0%, transparent 52%, rgb(var(--canvas) / 0.34) 100%);
+  }
+}
+
 .motion-inline-image {
   box-shadow: inset 0 0 0 1px rgb(var(--rim-strong) / 0.7);
   transform: translateY(-0.03em);

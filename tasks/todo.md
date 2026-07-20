@@ -132,6 +132,50 @@
 
 - None.
 
+## Hero Background Correction
+
+### Plan
+
+- [x] Reinspect reference frames for layout hierarchy.
+- [x] Move gate video from side card to full-bleed hero background.
+- [x] Verify full-viewport playback, readability, responsive crop, and reduced-motion fallback.
+
+### Verification
+
+- [x] Run typecheck and production build.
+- [x] Browser-check desktop and mobile hero composition and playback.
+
+### Likely Files
+
+- `apps/web/app/page.tsx`
+- `apps/web/app/globals.css`
+- `tasks/lessons.md`
+
+### Questions
+
+- None.
+
+### Review
+
+#### Changed
+
+- Moved looping gate video behind entire hero, navigation, and copy.
+- Added full-bleed crop plus desktop/mobile readability scrims.
+
+#### Verified
+
+- Typecheck and production build pass.
+- Desktop and mobile video autoplay, loop, fill viewport, and create no overflow.
+- Reduced-motion CSS hides video while retaining poster image.
+
+#### Risks
+
+- Browser screenshot can show video-frame tearing during capture; live playback remains smooth.
+
+#### Follow-ups
+
+- None.
+
 ## Design System Image
 
 ### Plan

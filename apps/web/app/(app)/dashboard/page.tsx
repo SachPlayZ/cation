@@ -234,7 +234,7 @@ function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void 
                 type="text"
                 inputMode="decimal"
                 required
-                pattern="^\\d+(\\.\\d{1,2})?$"
+                pattern="^\d+(\.\d{1,2})?$"
                 aria-describedby={`${key}-help`}
                 className={`${fieldClass} pl-7 font-mono`}
                 value={form[key]}
