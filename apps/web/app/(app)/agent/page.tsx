@@ -213,7 +213,7 @@ export default function AgentPage() {
 
   useEffect(() => {
     const role = getRole();
-    if (role && role !== "agent") router.replace("/");
+    if (role && role !== "agent") router.replace("/login");
   }, [router]);
 
   const fetchMandate = useCallback(async () => {

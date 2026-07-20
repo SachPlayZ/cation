@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { AuthError } from "./auth";
 import { LedgerError, isContentionError } from "./ledger";
 
@@ -18,6 +19,12 @@ export function apiError(
 export function handleError(err: unknown): NextResponse {
   if (err instanceof AuthError) {
     return apiError(err.status, err.code, err.message);
+  }
+  if (err instanceof ZodError) {
+    const message = err.issues
+      .map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`)
+      .join("; ");
+    return apiError(400, "VALIDATION_ERROR", message);
   }
   if (err instanceof LedgerError) {
     if (isContentionError(err)) {

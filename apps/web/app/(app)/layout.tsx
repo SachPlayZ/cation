@@ -135,7 +135,7 @@ function TopBar({
           aria-label="Sign out"
           onClick={() => {
             clearAuth();
-            window.location.href = "/";
+            window.location.href = "/login";
           }}
           className="flex size-10 shrink-0 items-center justify-center rounded-control text-muted transition hover:bg-elevated hover:text-ink active:scale-[0.98]"
         >
@@ -159,7 +159,7 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     const token = getToken();
     const storedRole = getRole();
     if (!token || !storedRole) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
     setRole(storedRole);

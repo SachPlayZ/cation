@@ -76,6 +76,66 @@ button,
   box-shadow: 0 24px 72px rgb(0 0 0 / 0.22);
 }
 
+.landing-shell {
+  background:
+    radial-gradient(circle at 82% 8%, rgb(var(--brand) / 0.055), transparent 26rem),
+    rgb(var(--canvas));
+}
+
+.motion-image {
+  will-change: opacity, transform;
+}
+
+.hero-gate-video {
+  pointer-events: none;
+}
+
+.motion-inline-image {
+  box-shadow: inset 0 0 0 1px rgb(var(--rim-strong) / 0.7);
+  transform: translateY(-0.03em);
+}
+
+.policy-outcomes {
+  transition: grid-template-columns 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.policy-outcome {
+  min-width: 0;
+}
+
+.motion-marquee-track {
+  animation: landing-marquee 32s linear infinite;
+  will-change: transform;
+}
+
+.motion-marquee:hover .motion-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes landing-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@media (min-width: 640px) {
+  .policy-outcomes:has(.policy-outcome:nth-child(1):hover) {
+    grid-template-columns: 1.16fr 0.92fr 0.92fr;
+  }
+
+  .policy-outcomes:has(.policy-outcome:nth-child(2):hover) {
+    grid-template-columns: 0.92fr 1.16fr 0.92fr;
+  }
+
+  .policy-outcomes:has(.policy-outcome:nth-child(3):hover) {
+    grid-template-columns: 0.92fr 0.92fr 1.16fr;
+  }
+
+  .policy-outcomes:hover .policy-outcome:not(:hover) {
+    background-color: rgb(var(--canvas));
+  }
+}
+
 .skeleton-sheen {
   background: linear-gradient(
     90deg,
@@ -93,6 +153,15 @@ button,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hero-gate-video {
+    display: none;
+  }
+
+  .motion-marquee-track {
+    animation: none;
+    transform: none;
+  }
+
   *,
   *::before,
   *::after {

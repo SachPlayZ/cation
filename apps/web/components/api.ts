@@ -67,6 +67,11 @@ export interface CreateMandateBody {
   expiresAt: string;
   counterpartyIds: string[];
   categories: string[];
+  // Real Loop Wallet signature over the terms above (see
+  // lib/mandateSigning.ts for the exact canonical message format).
+  walletPartyId: string;
+  walletSignature: string;
+  signedMessage: string;
 }
 
 // ── Auth helpers ───────────────────────────────────────────────────────────────
@@ -118,7 +123,7 @@ export async function apiFetch<T>(
 
   if (res.status === 401) {
     clearAuth();
-    if (typeof window !== "undefined") window.location.href = "/";
+    if (typeof window !== "undefined") window.location.href = "/login";
     throw new Error("Unauthenticated");
   }
 

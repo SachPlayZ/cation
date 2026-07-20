@@ -42,6 +42,8 @@ import {
   buttonSecondary,
   fieldClass,
 } from "@/components/ui";
+import { signWithLoopWallet } from "@/lib/loopWallet";
+import { canonicalMandateMessage } from "@/lib/mandateSigning";
 
 const KNOWN_CATEGORIES = [
   { id: "OperationalPayment", label: "Operational payment" },
@@ -116,6 +118,7 @@ function UsageMetric({
 function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void }) {
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
+  const [signingStage, setSigningStage] = useState<"idle" | "signing" | "submitting">("idle");
   const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
@@ -145,16 +148,51 @@ function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void 
       return;
     }
     setSubmitting(true);
+    const expiresAt = new Date(`${form.expiresAt}T23:59:59Z`).toISOString();
+    const terms = {
+      autoApproveLimit: form.autoApproveLimit,
+      perActionMaximum: form.perActionMaximum,
+      dailyMaximum: form.dailyMaximum,
+      monthlyMaximum: form.monthlyMaximum,
+      expiresAt,
+      counterpartyIds: form.counterpartyIds,
+      categories: form.categories,
+    };
+
+    // Require a real Loop Wallet signature over these exact terms before
+    // submitting — this is a real authorization gate, not a login-time
+    // cosmetic check. If the wallet is unreachable or the request is
+    // rejected, mandate creation does not proceed.
+    setSigningStage("signing");
+    let walletSignature: Awaited<ReturnType<typeof signWithLoopWallet>>;
+    try {
+      const message = canonicalMandateMessage(terms);
+      walletSignature = await signWithLoopWallet(message);
+    } catch (error) {
+      toast(
+        "error",
+        error instanceof Error
+          ? `Loop Wallet signature required: ${error.message}`
+          : "Loop Wallet signature required to create a mandate."
+      );
+      setSubmitting(false);
+      setSigningStage("idle");
+      return;
+    }
+
+    setSigningStage("submitting");
     try {
       const body: CreateMandateBody = {
-        ...form,
-        expiresAt: new Date(`${form.expiresAt}T23:59:59Z`).toISOString(),
+        ...terms,
+        walletPartyId: walletSignature.partyId,
+        walletSignature: JSON.stringify(walletSignature.signature),
+        signedMessage: walletSignature.message,
       };
       const mandate = await apiFetch<MandateView>("/api/mandate", {
         method: "POST",
         body: JSON.stringify(body),
       });
-      toast("success", "Mandate created and accepted by agent", {
+      toast("success", "Mandate signed via Loop Wallet and created on ledger", {
         label: "View on Canton Explorer",
         href: mandate.explorerUrl,
       });
@@ -163,6 +201,7 @@ function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void 
       toast("error", error instanceof Error ? error.message : "Failed to create mandate");
     } finally {
       setSubmitting(false);
+      setSigningStage("idle");
     }
   };
 
@@ -282,8 +321,17 @@ function MandateForm({ onCreated }: { onCreated: (mandate: MandateView) => void 
 
       <button type="submit" disabled={submitting} className={buttonPrimary}>
         {submitting ? <CircleNotch className="size-4 animate-spin" /> : <ShieldWarning className="size-4" />}
-        {submitting ? "Creating on ledger" : "Create mandate"}
+        {signingStage === "signing"
+          ? "Awaiting Loop Wallet signature…"
+          : signingStage === "submitting"
+            ? "Creating on ledger"
+            : "Create mandate"}
       </button>
+      {signingStage === "signing" && (
+        <p className="text-xs leading-5 text-faint">
+          Approve the signature request in Loop Wallet to authorize these exact terms.
+        </p>
+      )}
     </form>
   );
 }
@@ -312,7 +360,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const role = getRole();
-    if (role && role !== "cfo") router.replace("/");
+    if (role && role !== "cfo") router.replace("/login");
   }, [router]);
 
   const fetchAll = useCallback(async () => {

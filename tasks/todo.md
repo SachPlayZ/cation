@@ -80,3 +80,162 @@
 ### Follow-ups
 
 - None for README.
+
+## Landing Page
+
+### Plan
+
+- [x] Move the existing role gateway to `/login` without changing auth or wallet behavior.
+- [x] Build a responsive public landing page at `/` using the existing graphite and signal-red system.
+- [x] Generate and integrate original landing visuals.
+- [x] Update unauthenticated and role-mismatch redirects to `/login`.
+- [x] Run the anti-slop pre-flight and visible-copy audit.
+
+### Verification
+
+- [x] Run web typecheck and production build.
+- [x] Browser-check landing and login at desktop and mobile sizes.
+- [x] Check reduced motion, keyboard focus, contrast, overflow, image loading, and route behavior.
+- [x] Inspect the final diff for unrelated changes.
+
+### Likely Files
+
+- `apps/web/app/page.tsx`
+- `apps/web/app/login/page.tsx`
+- `apps/web/app/globals.css`
+- `apps/web/app/(app)/layout.tsx`
+- `apps/web/components/api.ts`
+- `apps/web/public/landing-*.png`
+
+### Questions
+
+- None.
+
+### Review
+
+#### Changed
+
+- Added a public, responsive landing page with original authority and privacy imagery.
+- Preserved the existing role gateway at `/login` and redirected unauthenticated sessions there.
+
+#### Verified
+
+- Typecheck and production build pass.
+- Desktop and mobile browser checks pass with no overflow, broken images, or console errors.
+- Landing pre-flight passes for theme, accent, shape, copy, motion, focus CSS, and reduced motion.
+
+#### Risks
+
+- None identified.
+
+#### Follow-ups
+
+- None.
+
+## Design System Image
+
+### Plan
+
+- [x] Inspect reference, current app tokens, logo, and product positioning.
+- [ ] Generate one reference-format Cation design-system overview image.
+
+### Verification
+
+- [ ] Confirm image output is obtained and visually readable.
+
+### Likely Files
+
+- None.
+
+## Landing Motion
+
+### Plan
+
+- [x] Add GSAP and its React integration.
+- [x] Add scoped landing-page motion with ScrollTrigger cleanup.
+- [x] Add subtle image scale/fade, scrubbed text, accordion, and marquee behavior.
+- [x] Preserve mobile layout and reduced-motion behavior.
+
+### Verification
+
+- [x] Run typecheck and production build.
+- [x] Browser-check motion at desktop and mobile sizes.
+- [x] Verify ScrollTriggers, cleanup, reduced motion, overflow, and console output.
+
+### Likely Files
+
+- `apps/web/app/page.tsx`
+- `apps/web/app/globals.css`
+- `apps/web/components/LandingMotion.tsx`
+- `apps/web/package.json`
+- `package-lock.json`
+
+### Questions
+
+- None.
+
+### Review
+
+#### Changed
+
+- Added scoped GSAP entrances, scroll reveals, scrubbed word opacity, image scale/fade, metric motion, accordion hover, and a slow proof marquee.
+- Added explicit reduced-motion handling and ScrollTrigger teardown.
+
+#### Verified
+
+- Typecheck and production build pass.
+- Scroll-state inspection proves progressive word reveal and image entry, peak, and exit values.
+- Desktop and mobile previews have no overflow, broken images, or console errors.
+
+#### Risks
+
+- The landing route adds about 45 kB of client JavaScript for GSAP.
+
+#### Follow-ups
+
+- None.
+
+## Hero Gate Video
+
+### Plan
+
+- [x] Analyze the supplied motion reference and current hero composition.
+- [x] Render a seamless five-second ray animation from the existing gate artwork.
+- [x] Integrate the looping background video with poster and reduced-motion fallback.
+
+### Verification
+
+- [x] Inspect representative frames and loop continuity.
+- [x] Run typecheck and production build.
+- [x] Browser-check playback, fallback, overflow, and console output on desktop and mobile.
+
+### Likely Files
+
+- `apps/web/app/page.tsx`
+- `apps/web/app/globals.css`
+- `apps/web/public/landing/authority-gate-loop.mp4`
+
+### Questions
+
+- None.
+
+### Review
+
+#### Changed
+
+- Added a five-second H.264 hero loop with perspective-aligned red light packets flowing into the gate.
+- Added autoplay, muted, inline playback with poster and reduced-motion fallbacks.
+
+#### Verified
+
+- Representative frames and the loop seam were visually inspected.
+- Typecheck and production build pass.
+- Desktop and mobile autoplay work with no overflow or console errors; desktop playback visibly wrapped.
+
+#### Risks
+
+- Browsers blocking autoplay show the still poster.
+
+#### Follow-ups
+
+- None.

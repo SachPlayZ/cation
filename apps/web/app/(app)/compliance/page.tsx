@@ -34,7 +34,7 @@ export default function CompliancePage() {
 
   useEffect(() => {
     const role = getRole();
-    if (role && role !== "compliance") router.replace("/");
+    if (role && role !== "compliance") router.replace("/login");
   }, [router]);
 
   const fetchViolations = useCallback(async () => {

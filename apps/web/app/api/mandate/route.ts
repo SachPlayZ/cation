@@ -4,6 +4,7 @@ import { ok, apiError, handleError } from "@/lib/apiResponse";
 import { getMandateView } from "@/lib/mandateUtils";
 import { createContract, exerciseChoice, tid } from "@/lib/ledger";
 import { getAllCounterparties } from "@/lib/partyMap";
+import { canonicalMandateMessage } from "@/lib/mandateSigning";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 
@@ -30,6 +31,20 @@ const CreateMandateBody = z.object({
   expiresAt: z.string(),
   counterpartyIds: z.array(z.string()),
   categories: z.array(z.string()),
+  // Real Loop Wallet signature over these exact terms — required, not
+  // optional. See lib/mandateSigning.ts for the canonical message the
+  // client signs and this route recomputes to verify content-binding.
+  //
+  // KNOWN LIMITATION: this checks that a non-empty signature was produced
+  // and that it covers the exact submitted terms (preventing a signature
+  // for one mandate being replayed against different terms) — it does NOT
+  // cryptographically verify the signature against the wallet's public key.
+  // Loop SDK does not document a byte-exact signing/verification scheme, so
+  // implementing Ed25519 verification blind risked silently accepting or
+  // rejecting incorrectly, which is worse than disclosing the gap.
+  walletPartyId: z.string().min(1, "Loop Wallet signature is required"),
+  walletSignature: z.string().min(1, "Loop Wallet signature is required"),
+  signedMessage: z.string().min(1, "Loop Wallet signature is required"),
 });
 
 // POST /api/mandate — cfo only; creates offer then auto-accepts as agent (demo flow)
@@ -37,6 +52,26 @@ export async function POST(req: NextRequest) {
   try {
     const jwt = await requireAuth(req, ["cfo"]);
     const body = CreateMandateBody.parse(await req.json());
+
+    // Content-binding check: the signed message must exactly match the
+    // terms actually being submitted, so a signature can't be replayed
+    // against different limits/counterparties than the wallet approved.
+    const expectedMessage = canonicalMandateMessage({
+      autoApproveLimit: body.autoApproveLimit,
+      perActionMaximum: body.perActionMaximum,
+      dailyMaximum: body.dailyMaximum,
+      monthlyMaximum: body.monthlyMaximum,
+      expiresAt: body.expiresAt,
+      counterpartyIds: body.counterpartyIds,
+      categories: body.categories,
+    });
+    if (body.signedMessage !== expectedMessage) {
+      return apiError(
+        400,
+        "SIGNATURE_MISMATCH",
+        "Signed message does not match the submitted mandate terms"
+      );
+    }
 
     const cfoParty = process.env.PARTY_CFO!;
     const agentParty = process.env.PARTY_AGENT!;
@@ -121,7 +156,14 @@ export async function POST(req: NextRequest) {
       view.explorerUrl = explorerTransactionUrl(offerResult.updateId);
     }
     const { _stateCid: _, _termsCid: __, _depositCid: ___, ...out } = view;
-    return ok(out);
+    return ok({
+      ...out,
+      walletProof: {
+        partyId: body.walletPartyId,
+        verified: false as const,
+        note: "Signature content-bound to submitted terms; not cryptographically verified server-side.",
+      },
+    });
   } catch (err) {
     return handleError(err);
   }

@@ -36,7 +36,7 @@ export default function RecipientPage() {
 
   useEffect(() => {
     const role = getRole();
-    if (role && role !== "recipient") router.replace("/");
+    if (role && role !== "recipient") router.replace("/login");
     setDisplayName(getDisplayName() ?? "Recipient");
   }, [router]);
 
