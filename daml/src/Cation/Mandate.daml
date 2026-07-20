@@ -1,0 +1,330 @@
+module Cation.Mandate where
+
+import DA.Time (days, addRelTime)
+import Cation.Types
+import Cation.Asset
+
+-- Advance a period boundary forward until it is in the future.
+advanceBoundary : Time -> Int -> Time -> Time
+advanceBoundary boundary periodDays now =
+  if boundary > now
+    then boundary
+    else advanceBoundary (addRelTime boundary (days periodDays)) periodDays now
+
+-- Static authorization terms, agreed by principal and agent via propose-accept.
+template MandateTerms
+  with
+    mandateId : Text
+    principal : Party
+    agent : Party
+    approver : Party
+    compliance : Party
+    permittedCategories : [ActionCategory]
+    permittedCounterparties : [Party]
+    autoApproveLimit : Decimal
+    perActionMaximum : Decimal
+    dailyMaximum : Decimal
+    monthlyMaximum : Decimal
+    currency : Text
+    expiresAt : Time
+  where
+    signatory principal, agent
+
+-- Ordered hard-denial evaluation. First failing rule wins; None means allowed.
+-- Duplicate-request and threshold handling live in the choices, not here,
+-- because approval execution skips them differently.
+firstDenial
+  : MandateTerms -> MandateStatus -> Decimal -> Decimal -> Time
+  -> ActionCategory -> Decimal -> Text -> Party -> Optional Text
+firstDenial terms status dSpent mSpent now category amount currency counterparty
+  | status == Revoked = Some denialMandateRevoked
+  | status == Paused = Some denialMandatePaused
+  | now >= terms.expiresAt = Some denialMandateExpired
+  | amount <= 0.0 = Some denialInvalidAmount
+  | currency /= terms.currency = Some denialInvalidCurrency
+  | category `notElem` terms.permittedCategories = Some denialCategoryNotAllowed
+  | counterparty `notElem` terms.permittedCounterparties = Some denialCounterpartyNotAllowed
+  | amount > terms.perActionMaximum = Some denialAboveHardLimit
+  | dSpent + amount > terms.dailyMaximum = Some denialDailyLimitExceeded
+  | mSpent + amount > terms.monthlyMaximum = Some denialMonthlyLimitExceeded
+  | otherwise = None
+
+data ActionOutcome
+  = OutExecuted (ContractId ExecutionReceipt)
+  | OutPending (ContractId PendingApproval)
+  | OutDenied (ContractId PolicyViolation)
+  deriving (Eq, Show)
+
+-- Live mutable mandate state. Consuming choices serialize all spending:
+-- two requests can never both spend against the same state contract.
+template AgentMandateState
+  with
+    mandateId : Text
+    termsCid : ContractId MandateTerms
+    principal : Party
+    agent : Party
+    approver : Party
+    status : MandateStatus
+    dailySpent : Decimal
+    monthlySpent : Decimal
+    dailyResetAt : Time
+    monthlyResetAt : Time
+    version : Int
+    recentRequestIds : [Text]
+  where
+    signatory principal
+    observer agent, approver
+
+    -- Agent proposes an action. Always succeeds as a transaction and branches
+    -- into execute / pending approval / denial so every outcome leaves an
+    -- on-ledger record.
+    choice RequestAction : (ContractId AgentMandateState, ActionOutcome)
+      with
+        requestId : Text
+        category : ActionCategory
+        amount : Decimal
+        reqCurrency : Text
+        counterparty : Party
+        purpose : Text
+        depositCid : ContractId DemoDeposit
+      controller agent
+      do
+        now <- getTime
+        terms <- fetch termsCid
+        let dReset = advanceBoundary dailyResetAt 1 now
+            mReset = advanceBoundary monthlyResetAt 30 now
+            dSpent = if dReset == dailyResetAt then dailySpent else 0.0
+            mSpent = if mReset == monthlyResetAt then monthlySpent else 0.0
+            rolled = this with
+              dailySpent = dSpent
+              monthlySpent = mSpent
+              dailyResetAt = dReset
+              monthlyResetAt = mReset
+              version = version + 1
+            denial =
+              if requestId `elem` recentRequestIds
+                then Some denialDuplicateRequest
+                else firstDenial terms status dSpent mSpent now category amount reqCurrency counterparty
+        case denial of
+          Some code -> do
+            violationCid <- create PolicyViolation with
+              mandateId; requestId; principal; agent
+              compliance = terms.compliance
+              code; category; amount; counterparty
+              occurredAt = now
+            newState <- create rolled
+            pure (newState, OutDenied violationCid)
+          None ->
+            if amount > terms.autoApproveLimit
+              then do
+                pendingCid <- create PendingApproval with
+                  mandateId; requestId; principal; agent; approver
+                  category; amount
+                  currency = reqCurrency
+                  counterparty; purpose
+                  createdAt = now
+                newState <- create rolled with
+                  recentRequestIds = take 100 (requestId :: recentRequestIds)
+                pure (newState, OutPending pendingCid)
+              else do
+                (_, _) <- exercise depositCid Debit with recipient = counterparty, paid = amount
+                receiptCid <- create ExecutionReceipt with
+                  requestId; mandateId; principal; agent
+                  recipient = counterparty
+                  amount
+                  currency = reqCurrency
+                  executedAt = now
+                newState <- create rolled with
+                  dailySpent = dSpent + amount
+                  monthlySpent = mSpent + amount
+                  recentRequestIds = take 100 (requestId :: recentRequestIds)
+                pure (newState, OutExecuted receiptCid)
+
+    -- Executes a previously escalated request. Re-evaluates the CURRENT state
+    -- (limits, expiry, status) — approval is not a bypass. Skips the duplicate
+    -- check (the requestId was recorded when the pending approval was created)
+    -- and the auto-approve threshold (a human has approved).
+    choice ExecuteApprovedAction : (ContractId AgentMandateState, ActionOutcome)
+      with
+        requestId : Text
+        category : ActionCategory
+        amount : Decimal
+        reqCurrency : Text
+        counterparty : Party
+        depositCid : ContractId DemoDeposit
+      controller approver
+      do
+        now <- getTime
+        terms <- fetch termsCid
+        let dReset = advanceBoundary dailyResetAt 1 now
+            mReset = advanceBoundary monthlyResetAt 30 now
+            dSpent = if dReset == dailyResetAt then dailySpent else 0.0
+            mSpent = if mReset == monthlyResetAt then monthlySpent else 0.0
+            rolled = this with
+              dailySpent = dSpent
+              monthlySpent = mSpent
+              dailyResetAt = dReset
+              monthlyResetAt = mReset
+              version = version + 1
+            denial = firstDenial terms status dSpent mSpent now category amount reqCurrency counterparty
+        case denial of
+          Some code -> do
+            violationCid <- create PolicyViolation with
+              mandateId; requestId; principal; agent
+              compliance = terms.compliance
+              code; category; amount; counterparty
+              occurredAt = now
+            newState <- create rolled
+            pure (newState, OutDenied violationCid)
+          None -> do
+            (_, _) <- exercise depositCid Debit with recipient = counterparty, paid = amount
+            receiptCid <- create ExecutionReceipt with
+              requestId; mandateId; principal; agent
+              recipient = counterparty
+              amount
+              currency = reqCurrency
+              executedAt = now
+            newState <- create rolled with
+              dailySpent = dSpent + amount
+              monthlySpent = mSpent + amount
+            pure (newState, OutExecuted receiptCid)
+
+    choice PauseMandate : ContractId AgentMandateState
+      controller principal
+      do create this with status = Paused, version = version + 1
+
+    choice ResumeMandate : ContractId AgentMandateState
+      controller principal
+      do create this with status = Active, version = version + 1
+
+    -- Revocation keeps a terminal state contract on ledger so the agent can
+    -- still see (and the demo can show) that its authority is gone. All
+    -- requests against a Revoked state are denied.
+    choice RevokeMandate : ContractId AgentMandateState
+      controller principal
+      do create this with status = Revoked, version = version + 1
+
+-- Propose-accept onboarding: the principal cannot bind the agent unilaterally.
+template MandateOffer
+  with
+    mandateId : Text
+    principal : Party
+    agent : Party
+    approver : Party
+    compliance : Party
+    permittedCategories : [ActionCategory]
+    permittedCounterparties : [Party]
+    autoApproveLimit : Decimal
+    perActionMaximum : Decimal
+    dailyMaximum : Decimal
+    monthlyMaximum : Decimal
+    currency : Text
+    expiresAt : Time
+    dailyResetAt : Time
+    monthlyResetAt : Time
+  where
+    signatory principal
+    observer agent
+
+    choice AcceptMandate : (ContractId MandateTerms, ContractId AgentMandateState)
+      controller agent
+      do
+        termsCid <- create MandateTerms with
+          mandateId; principal; agent; approver; compliance
+          permittedCategories; permittedCounterparties
+          autoApproveLimit; perActionMaximum; dailyMaximum; monthlyMaximum
+          currency; expiresAt
+        stateCid <- create AgentMandateState with
+          mandateId; termsCid; principal; agent; approver
+          status = Active
+          dailySpent = 0.0
+          monthlySpent = 0.0
+          dailyResetAt; monthlyResetAt
+          version = 1
+          recentRequestIds = []
+        pure (termsCid, stateCid)
+
+    choice RejectMandate : ()
+      controller agent
+      do pure ()
+
+    choice WithdrawOffer : ()
+      controller principal
+      do pure ()
+
+-- A request awaiting human authorization. No funds move until approved, and
+-- approval re-evaluates the latest mandate state.
+template PendingApproval
+  with
+    mandateId : Text
+    requestId : Text
+    principal : Party
+    agent : Party
+    approver : Party
+    category : ActionCategory
+    amount : Decimal
+    currency : Text
+    counterparty : Party
+    purpose : Text
+    createdAt : Time
+  where
+    signatory principal
+    observer agent, approver
+
+    choice ApproveRequest : (ContractId AgentMandateState, ActionOutcome)
+      with
+        stateCid : ContractId AgentMandateState
+        depositCid : ContractId DemoDeposit
+      controller approver
+      do
+        exercise stateCid ExecuteApprovedAction with
+          requestId; category; amount
+          reqCurrency = currency
+          counterparty; depositCid
+
+    choice RejectRequest : ContractId PolicyViolation
+      with
+        complianceParty : Party
+      controller approver
+      do
+        now <- getTime
+        create PolicyViolation with
+          mandateId; requestId; principal; agent
+          compliance = complianceParty
+          code = "REJECTED_BY_APPROVER"
+          category; amount; counterparty
+          occurredAt = now
+
+-- Compliance-facing denial record. Deliberately minimal: no purpose text,
+-- no balances, no prompts.
+template PolicyViolation
+  with
+    mandateId : Text
+    requestId : Text
+    principal : Party
+    agent : Party
+    compliance : Party
+    code : Text
+    category : ActionCategory
+    amount : Decimal
+    counterparty : Party
+    occurredAt : Time
+  where
+    signatory principal
+    observer compliance, agent
+
+-- Post-execution record. The recipient sees this (and its incoming deposit),
+-- never the mandate, limits, or usage.
+template ExecutionReceipt
+  with
+    requestId : Text
+    mandateId : Text
+    principal : Party
+    agent : Party
+    recipient : Party
+    amount : Decimal
+    currency : Text
+    executedAt : Time
+  where
+    signatory principal
+    observer agent, recipient

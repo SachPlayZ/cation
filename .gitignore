@@ -1,0 +1,26 @@
+# Environment — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+apps/web/.turbo/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Daml build artifacts (DAR is committed for reference; .daml cache is not)
+daml/.daml/
+
+# Misc
+.DS_Store
+*.log
+.vercel

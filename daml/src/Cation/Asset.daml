@@ -1,0 +1,35 @@
+module Cation.Asset where
+
+-- Minimal demo treasury asset. The issuer (the CFO / principal) is the sole
+-- signatory so mandate choices carrying the principal's authority can move it.
+-- `delegates` (the mandated agent) observe the treasury deposit — the agent
+-- must see the input contract to submit a RequestAction that spends it, and
+-- "operational account balance" is an explicitly granted data scope. Deposits
+-- created for recipients carry no delegates: the agent never sees them.
+template DemoDeposit
+  with
+    issuer : Party
+    owner : Party
+    currency : Text
+    amount : Decimal
+    delegates : [Party]
+  where
+    signatory issuer
+    observer owner, delegates
+
+    ensure amount > 0.0
+
+    -- Pay `paid` to `recipient`, returning (recipient's new deposit, issuer's change).
+    choice Debit : (ContractId DemoDeposit, Optional (ContractId DemoDeposit))
+      with
+        recipient : Party
+        paid : Decimal
+      controller issuer
+      do
+        assertMsg "INSUFFICIENT_FUNDS" (paid > 0.0 && paid <= amount)
+        recipientCid <- create this with owner = recipient, amount = paid, delegates = []
+        changeCid <-
+          if paid == amount
+            then pure None
+            else Some <$> create this with amount = amount - paid
+        pure (recipientCid, changeCid)

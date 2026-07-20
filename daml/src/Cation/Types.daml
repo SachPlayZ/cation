@@ -1,0 +1,50 @@
+module Cation.Types where
+
+data ActionCategory
+  = OperationalPayment
+  | TreasuryTransfer
+  | CollateralTopUp
+  | PayrollDisbursement
+  | Reimbursement
+  deriving (Eq, Show)
+
+data MandateStatus
+  = Active
+  | Paused
+  | Revoked
+  deriving (Eq, Show)
+
+-- Machine-readable denial codes. Keep the full set here; the backend maps them
+-- to user-facing explanations.
+denialCounterpartyNotAllowed : Text
+denialCounterpartyNotAllowed = "COUNTERPARTY_NOT_ALLOWED"
+
+denialCategoryNotAllowed : Text
+denialCategoryNotAllowed = "ACTION_CATEGORY_NOT_ALLOWED"
+
+denialMandateExpired : Text
+denialMandateExpired = "MANDATE_EXPIRED"
+
+denialDailyLimitExceeded : Text
+denialDailyLimitExceeded = "DAILY_LIMIT_EXCEEDED"
+
+denialMonthlyLimitExceeded : Text
+denialMonthlyLimitExceeded = "MONTHLY_LIMIT_EXCEEDED"
+
+denialMandateRevoked : Text
+denialMandateRevoked = "MANDATE_REVOKED"
+
+denialMandatePaused : Text
+denialMandatePaused = "MANDATE_PAUSED"
+
+denialAboveHardLimit : Text
+denialAboveHardLimit = "AMOUNT_ABOVE_HARD_LIMIT"
+
+denialDuplicateRequest : Text
+denialDuplicateRequest = "DUPLICATE_REQUEST"
+
+denialInvalidAmount : Text
+denialInvalidAmount = "INVALID_AMOUNT"
+
+denialInvalidCurrency : Text
+denialInvalidCurrency = "INVALID_CURRENCY"

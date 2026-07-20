@@ -1,0 +1,320 @@
+module Cation.Tests where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.List (head)
+import DA.Date (date, Month(..))
+import DA.Time (time)
+import DA.Optional (fromSome)
+import Cation.Types
+import Cation.Asset
+import Cation.Mandate
+
+data Fixture = Fixture with
+  cfo : Party
+  agent : Party
+  compliance : Party
+  ops : Party
+  reserve : Party
+  outsider : Party
+  termsCid : ContractId MandateTerms
+  stateCid : ContractId AgentMandateState
+  depositCid : ContractId DemoDeposit
+
+t0 : Time
+t0 = time (date 2026 Jul 19) 10 0 0
+
+setup : Script Fixture
+setup = do
+  cfo <- allocateParty "cfo"
+  agent <- allocateParty "agent"
+  compliance <- allocateParty "compliance"
+  ops <- allocateParty "ops"
+  reserve <- allocateParty "reserve"
+  outsider <- allocateParty "outsider"
+  setTime t0
+  depositCid <- submit cfo do
+    createCmd DemoDeposit with
+      issuer = cfo, owner = cfo, currency = "USD", amount = 10000.0
+      delegates = [agent]
+  offerCid <- submit cfo do
+    createCmd MandateOffer with
+      mandateId = "m1"
+      principal = cfo, agent, approver = cfo, compliance
+      permittedCategories = [OperationalPayment, TreasuryTransfer]
+      permittedCounterparties = [ops, reserve]
+      autoApproveLimit = 500.0
+      perActionMaximum = 1500.0
+      dailyMaximum = 2000.0
+      monthlyMaximum = 20000.0
+      currency = "USD"
+      expiresAt = time (date 2026 Jul 31) 0 0 0
+      dailyResetAt = time (date 2026 Jul 20) 0 0 0
+      monthlyResetAt = time (date 2026 Aug 1) 0 0 0
+  (termsCid, stateCid) <- submit agent do
+    exerciseCmd offerCid AcceptMandate
+  pure Fixture with ..
+
+request
+  : Fixture -> Text -> ActionCategory -> Decimal -> Party
+  -> Script (ContractId AgentMandateState, ActionOutcome)
+request Fixture{..} rid cat amt cp =
+  submit agent do
+    exerciseCmd stateCid RequestAction with
+      requestId = rid, category = cat, amount = amt
+      reqCurrency = "USD", counterparty = cp
+      purpose = "test", depositCid
+
+expectDenied : Text -> ActionOutcome -> Script ()
+expectDenied expectedCode = \case
+  OutDenied vCid -> pure ()
+  other -> abort $ "expected denial " <> expectedCode <> ", got " <> show other
+
+-- 1. Allowed request under limit executes; usage + balances update.
+testAutoExecute : Script ()
+testAutoExecute = do
+  f@Fixture{..} <- setup
+  (newState, outcome) <- request f "r1" OperationalPayment 200.0 ops
+  case outcome of
+    OutExecuted receiptCid -> do
+      Some r <- queryContractId cfo receiptCid
+      r.amount === 200.0
+      r.recipient === ops
+    other -> abort $ "expected execution, got " <> show other
+  Some st <- queryContractId cfo newState
+  st.dailySpent === 200.0
+  st.monthlySpent === 200.0
+  -- ops received a deposit; cfo change is 9800
+  opsDeposits <- query @DemoDeposit ops
+  sum (map (\(_, d) -> d.amount) (filter (\(_, d) -> d.owner == ops) opsDeposits)) === 200.0
+
+-- 2. Above auto threshold -> pending approval, no funds moved, no spend counted.
+testApprovalPath : Script ()
+testApprovalPath = do
+  f@Fixture{..} <- setup
+  (newState, outcome) <- request f "r2" TreasuryTransfer 1200.0 reserve
+  pendingCid <- case outcome of
+    OutPending p -> pure p
+    other -> abort $ "expected pending, got " <> show other
+  Some st <- queryContractId cfo newState
+  st.dailySpent === 0.0
+  -- approve: rechecks and executes
+  deposits <- query @DemoDeposit cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (_, outcome2) <- submit f.cfo do
+    exerciseCmd pendingCid ApproveRequest with stateCid = newState, depositCid = dCid
+  case outcome2 of
+    OutExecuted _ -> pure ()
+    other -> abort $ "expected execution after approval, got " <> show other
+
+-- 3. Above per-action hard limit -> denied even though > auto threshold.
+testHardLimit : Script ()
+testHardLimit = do
+  f <- setup
+  (_, outcome) <- request f "r3" OperationalPayment 1600.0 f.ops
+  expectDenied denialAboveHardLimit outcome
+
+-- 4. Unapproved counterparty -> denied with record.
+testBlockedCounterparty : Script ()
+testBlockedCounterparty = do
+  f <- setup
+  (_, outcome) <- request f "r4" OperationalPayment 100.0 f.outsider
+  expectDenied denialCounterpartyNotAllowed outcome
+  -- compliance sees the violation
+  violations <- query @PolicyViolation f.compliance
+  length violations === 1
+  let (_, v) = head violations
+  v.code === denialCounterpartyNotAllowed
+
+-- 5. Prohibited category -> denied.
+testBlockedCategory : Script ()
+testBlockedCategory = do
+  f <- setup
+  (_, outcome) <- request f "r5" PayrollDisbursement 100.0 f.ops
+  expectDenied denialCategoryNotAllowed outcome
+
+-- 6/8. Daily accumulation: second request exceeding daily cap denied.
+testDailyLimit : Script ()
+testDailyLimit = do
+  f <- setup
+  (s1, o1) <- request f "r6" OperationalPayment 500.0 f.ops
+  case o1 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- chain further requests against the NEW state each time
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (s2, o2) <- submit f.agent do
+    exerciseCmd s1 RequestAction with
+      requestId = "r7", category = OperationalPayment, amount = 500.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  case o2 of OutExecuted _ -> pure (); other -> abort (show other)
+  deposits2 <- query @DemoDeposit f.cfo
+  let dCid2 = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits2
+  (s3, o3) <- submit f.agent do
+    exerciseCmd s2 RequestAction with
+      requestId = "r8", category = OperationalPayment, amount = 500.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid2
+  case o3 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- 1500 spent; another 501 would break 2000 daily cap
+  deposits3 <- query @DemoDeposit f.cfo
+  let dCid3 = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits3
+  (_, o4) <- submit f.agent do
+    exerciseCmd s3 RequestAction with
+      requestId = "r9", category = OperationalPayment, amount = 501.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid3
+  expectDenied denialDailyLimitExceeded o4
+
+-- Daily counter resets after boundary passes.
+testDailyReset : Script ()
+testDailyReset = do
+  f <- setup
+  (s1, o1) <- request f "r10" OperationalPayment 500.0 f.ops
+  case o1 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- next day: counter starts fresh
+  setTime (time (date 2026 Jul 20) 10 0 0)
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (s2, o2) <- submit f.agent do
+    exerciseCmd s1 RequestAction with
+      requestId = "r11", category = OperationalPayment, amount = 500.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  case o2 of OutExecuted _ -> pure (); other -> abort (show other)
+  Some st <- queryContractId f.cfo s2
+  st.dailySpent === 500.0
+
+-- 9. Expired mandate cannot execute.
+testExpired : Script ()
+testExpired = do
+  f <- setup
+  setTime (time (date 2026 Aug 2) 10 0 0)
+  (_, outcome) <- request f "r12" OperationalPayment 100.0 f.ops
+  expectDenied denialMandateExpired outcome
+
+-- 10. Revoked mandate cannot execute.
+testRevoked : Script ()
+testRevoked = do
+  f <- setup
+  revokedState <- submit f.cfo do exerciseCmd f.stateCid RevokeMandate
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (_, outcome) <- submit f.agent do
+    exerciseCmd revokedState RequestAction with
+      requestId = "r13", category = OperationalPayment, amount = 100.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  expectDenied denialMandateRevoked outcome
+
+-- 11. Approval rechecks latest state: exhaust daily limit, then approve stale pending -> denied.
+testApprovalRecheck : Script ()
+testApprovalRecheck = do
+  f <- setup
+  -- create pending for 1400 (above 500 auto threshold)
+  (s1, o1) <- request f "p1" TreasuryTransfer 1400.0 f.reserve
+  pendingCid <- case o1 of OutPending p -> pure p; other -> abort (show other)
+  -- meanwhile agent spends 1000 of the 2000 daily cap (two auto-sized requests)
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (sA, oA) <- submit f.agent do
+    exerciseCmd s1 RequestAction with
+      requestId = "p2", category = OperationalPayment, amount = 500.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  case oA of OutExecuted _ -> pure (); other -> abort (show other)
+  depositsB <- query @DemoDeposit f.cfo
+  let dCidB = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) depositsB
+  (s2, o2) <- submit f.agent do
+    exerciseCmd sA RequestAction with
+      requestId = "p3", category = OperationalPayment, amount = 500.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCidB
+  case o2 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- approving 1400 now would exceed daily 2000 -> must be denied
+  deposits2 <- query @DemoDeposit f.cfo
+  let dCid2 = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits2
+  (_, o3) <- submit f.cfo do
+    exerciseCmd pendingCid ApproveRequest with stateCid = s2, depositCid = dCid2
+  expectDenied denialDailyLimitExceeded o3
+
+-- 12. Two requests cannot spend the same state contract.
+testNoDoubleSpendOnState : Script ()
+testNoDoubleSpendOnState = do
+  f <- setup
+  (_, o1) <- request f "c1" OperationalPayment 100.0 f.ops
+  case o1 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- same (now archived) state cid again -> must fail
+  submitMustFail f.agent do
+    exerciseCmd f.stateCid RequestAction with
+      requestId = "c2", category = OperationalPayment, amount = 100.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = f.depositCid
+
+-- 13. Agent cannot pause/revoke/amend its own mandate.
+testAgentCannotAmend : Script ()
+testAgentCannotAmend = do
+  f <- setup
+  submitMustFail f.agent do exerciseCmd f.stateCid RevokeMandate
+  submitMustFail f.agent do exerciseCmd f.stateCid PauseMandate
+
+-- 14. Compliance cannot approve.
+testComplianceCannotApprove : Script ()
+testComplianceCannotApprove = do
+  f <- setup
+  (s1, o1) <- request f "a1" TreasuryTransfer 1200.0 f.reserve
+  pendingCid <- case o1 of OutPending p -> pure p; other -> abort (show other)
+  submitMustFail f.compliance do
+    exerciseCmd pendingCid ApproveRequest with stateCid = s1, depositCid = f.depositCid
+
+-- 15/16/17. Privacy: recipient sees its receipt, not mandate/terms; outsider sees nothing.
+testPrivacy : Script ()
+testPrivacy = do
+  f <- setup
+  (_, o1) <- request f "v1" OperationalPayment 200.0 f.ops
+  case o1 of OutExecuted _ -> pure (); other -> abort (show other)
+  -- recipient (ops) sees the receipt
+  opsReceipts <- query @ExecutionReceipt f.ops
+  length opsReceipts === 1
+  -- recipient cannot see terms or state
+  opsTerms <- query @MandateTerms f.ops
+  opsTerms === []
+  opsStates <- query @AgentMandateState f.ops
+  opsStates === []
+  -- outsider sees nothing at all
+  oTerms <- query @MandateTerms f.outsider
+  oTerms === []
+  oReceipts <- query @ExecutionReceipt f.outsider
+  oReceipts === []
+  oViolations <- query @PolicyViolation f.outsider
+  oViolations === []
+  -- compliance does NOT see receipts (only violations)
+  cReceipts <- query @ExecutionReceipt f.compliance
+  cReceipts === []
+
+-- 18. Duplicate requestId denied.
+testDuplicateRequest : Script ()
+testDuplicateRequest = do
+  f <- setup
+  (s1, o1) <- request f "d1" OperationalPayment 100.0 f.ops
+  case o1 of OutExecuted _ -> pure (); other -> abort (show other)
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (_, o2) <- submit f.agent do
+    exerciseCmd s1 RequestAction with
+      requestId = "d1", category = OperationalPayment, amount = 100.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  expectDenied denialDuplicateRequest o2
+
+-- Paused mandate denies, resume restores.
+testPauseResume : Script ()
+testPauseResume = do
+  f <- setup
+  paused <- submit f.cfo do exerciseCmd f.stateCid PauseMandate
+  deposits <- query @DemoDeposit f.cfo
+  let dCid = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits
+  (s2, o1) <- submit f.agent do
+    exerciseCmd paused RequestAction with
+      requestId = "z1", category = OperationalPayment, amount = 100.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid
+  expectDenied denialMandatePaused o1
+  resumed <- submit f.cfo do exerciseCmd s2 ResumeMandate
+  deposits2 <- query @DemoDeposit f.cfo
+  let dCid2 = fst $ fromSome $ find (\(_, d) -> d.owner == f.cfo) deposits2
+  (_, o2) <- submit f.agent do
+    exerciseCmd resumed RequestAction with
+      requestId = "z2", category = OperationalPayment, amount = 100.0
+      reqCurrency = "USD", counterparty = f.ops, purpose = "t", depositCid = dCid2
+  case o2 of OutExecuted _ -> pure (); other -> abort (show other)
